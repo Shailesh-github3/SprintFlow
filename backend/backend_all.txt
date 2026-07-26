@@ -1,0 +1,2505 @@
+﻿package com.sprintflow;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SprintflowApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(SprintflowApplication.class, args);
+	}
+
+}
+// File: src/main/java/com/sprintflow/config/AppConfig.java
+package com.sprintflow.config;
+
+import java.util.List;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
+public class AppConfig {
+
+    private final JwtTokenValidator jwtTokenValidator;
+    private final CorsProperties corsProperties;
+
+    public AppConfig(JwtTokenValidator jwtTokenValidator, CorsProperties corsProperties) {
+        this.jwtTokenValidator = jwtTokenValidator;
+        this.corsProperties = corsProperties;
+    }
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.sessionManagement(Management -> Management.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/error").permitAll()
+                .requestMatchers("/api/**").authenticated()
+                .anyRequest().permitAll()
+            )
+            .addFilterBefore(jwtTokenValidator, UsernamePasswordAuthenticationFilter.class)
+            .csrf(csrf -> csrf.disable())
+            .cors(cors -> cors.configurationSource((corsConfigurationSource())));
+
+        return http.build();
+    }
+
+    private CorsConfigurationSource corsConfigurationSource() {
+        return request -> {
+            CorsConfiguration config = new CorsConfiguration();
+            config.setAllowedOrigins(corsProperties.allowedOrigins() == null || corsProperties.allowedOrigins().isEmpty()
+                    ? List.of("http://localhost:3000", "http://localhost:5173", "http://localhost:4200")
+                    : corsProperties.allowedOrigins());
+            config.setAllowedMethods(corsProperties.allowedMethods() == null || corsProperties.allowedMethods().isEmpty()
+                    ? List.of("GET", "POST", "PUT", "PATCH", "DELETE")
+                    : corsProperties.allowedMethods());
+            config.setAllowedHeaders(corsProperties.allowedHeaders() == null || corsProperties.allowedHeaders().isEmpty()
+                    ? List.of("*")
+                    : corsProperties.allowedHeaders());
+            config.setExposedHeaders(List.of("Authorization"));
+            config.setAllowCredentials(true);
+            config.setMaxAge(3600L);
+            return config;
+        };
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+}
+package com.sprintflow.config;
+
+import java.util.List;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "sprintflow.cors")
+public record CorsProperties(List<String> allowedOrigins, List<String> allowedMethods, List<String> allowedHeaders) {
+    
+}
+package com.sprintflow.config;
+
+public class JwtConstant {
+
+    public static final String JWT_SECRET = System.getenv().getOrDefault("SPRINGFLOW_JWT_SECRET", "springflow-dev-secret-key-change-me-in-production-1234567890");
+    public static final String JWT_HEADER = "Authorization";
+    public static final long JWT_EXPIRATION = 86400000; // 1 day in milliseconds
+
+}
+package com.sprintflow.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "sprintflow.jwt")
+public record JwtProperties(String secret, long expirationMs) {
+    
+}
+package com.sprintflow.config;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Component;
+
+@Component
+public class JwtProvider {
+
+    private final JwtService jwtService;
+
+    public JwtProvider(JwtService jwtService) {
+        this.jwtService = jwtService;
+    }
+
+    public String generateToken(Authentication auth) {
+        return jwtService.generateToken(auth);
+    }
+
+}
+package com.sprintflow.config;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
+import javax.crypto.SecretKey;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.stereotype.Service;
+
+@Service
+public class JwtService {
+
+    private final JwtProperties jwtProperties;
+    private final SecretKey secretKey;
+
+    public JwtService(JwtProperties jwtProperties) {
+        this.jwtProperties = jwtProperties;
+        this.secretKey = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes(StandardCharsets.UTF_8));
+    }
+
+    public String generateToken(Authentication authentication) {
+        Instant now = Instant.now();
+        
+        List<String> roles = authentication.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .toList();
+        
+        return Jwts.builder()
+                .subject(authentication.getName())
+                .claim("roles", roles)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(jwtProperties.expirationMs())))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public Claims parseClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+}
+// File: src/main/java/com/sprintflow/config/JwtTokenValidator.java
+package com.sprintflow.config;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.MalformedJwtException;
+
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Component
+public class JwtTokenValidator extends OncePerRequestFilter {
+
+    private final JwtService jwtService;
+
+    public JwtTokenValidator(JwtService jwtService) {
+        this.jwtService = jwtService;
+    }
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String jwt = request.getHeader(JwtConstant.JWT_HEADER);
+
+        if (jwt == null || !jwt.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        jwt = jwt.substring(7);
+
+        try {
+            Claims claims = jwtService.parseClaims(jwt);
+            String email = claims.getSubject();
+            
+            @SuppressWarnings("unchecked")
+            List<String> roles = claims.get("roles", List.class);
+            List<GrantedAuthority> authorities;
+            if (roles != null) {
+                authorities = roles.stream()
+                    .map(role -> new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role))
+                    .collect(Collectors.toList());
+            } else {
+                authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+            }
+            
+            Authentication authentication = new UsernamePasswordAuthenticationToken(email, null, authorities);
+
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authentication);
+            SecurityContextHolder.setContext(context);
+
+        } catch (ExpiredJwtException e) {
+            throw new BadCredentialsException("Token has expired", e);
+        } catch (MalformedJwtException e) {
+            throw new BadCredentialsException("Malformed token", e);
+        } catch (Exception e) {
+            throw new BadCredentialsException("Invalid token", e);
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+package com.sprintflow.controller;
+
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import com.sprintflow.repository.UserRepository;
+import com.sprintflow.response.AuthResponse;
+import com.sprintflow.config.JwtProvider;
+import com.sprintflow.entity.User;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PostMapping;
+import com.sprintflow.service.SubscriptionService;
+import jakarta.validation.Valid;
+import com.sprintflow.request.LoginRequest;
+import com.sprintflow.request.RegisterRequest;
+
+import java.util.List;
+
+
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+    private final SubscriptionService subscriptionService;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtProvider jwtProvider;
+
+    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, SubscriptionService subscriptionService, JwtProvider jwtProvider) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.subscriptionService = subscriptionService;
+        this.jwtProvider = jwtProvider;
+    }
+
+    @PostMapping("/register")    
+    public ResponseEntity<?> registerUserHandler(@Valid @RequestBody RegisterRequest request) throws Exception {
+        // Check if the user already exists
+        if (userRepository.findByEmail(request.getEmail()) != null) {
+            throw new Exception("User with email " + request.getEmail() + " already exists.");
+        }
+
+        User newUser = new User();
+        newUser.setPassword(passwordEncoder.encode(request.getPassword()));
+        newUser.setEmail(request.getEmail());
+        newUser.setFullName(request.getFullName());
+        newUser.setRoles(List.of("USER"));
+        User savedUser = userRepository.save(newUser);
+
+        subscriptionService.createSubscription(savedUser);
+
+        Authentication authenication = new UsernamePasswordAuthenticationToken(
+            savedUser.getEmail(), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authenication);
+
+        String jwt = jwtProvider.generateToken(authenication);
+
+        AuthResponse response = new AuthResponse();
+        response.setJwt(jwt);
+        response.setMessage("User created successfully");
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<?> loginHandler(@Valid @RequestBody LoginRequest request) throws Exception {
+        User existingUser = userRepository.findByEmail(request.getEmail());
+        if (existingUser == null || !passwordEncoder.matches(request.getPassword(), existingUser.getPassword())) {
+            throw new Exception("Invalid email or password.");
+        }
+
+        List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+        if (existingUser.getRoles() != null) {
+            for (String role : existingUser.getRoles()) {
+                authorities.add(new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role));
+            }
+        } else {
+            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+        }
+
+        Authentication authenication = new UsernamePasswordAuthenticationToken(
+            existingUser.getEmail(), null, authorities);
+        SecurityContextHolder.getContext().setAuthentication(authenication);
+
+        String jwt = jwtProvider.generateToken(authenication);
+
+        AuthResponse response = new AuthResponse();
+        response.setJwt(jwt);
+        response.setMessage("Login successful");
+
+        return ResponseEntity.ok(response);
+    }
+
+}
+package com.sprintflow.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.sprintflow.entity.Comment;
+import com.sprintflow.request.CreateCommentRequest;
+import com.sprintflow.service.CommentService;
+import com.sprintflow.service.ProjectService;
+
+import jakarta.validation.Valid;
+
+@RestController
+@RequestMapping("/api/comments")
+public class CommentController {
+
+    private final CommentService commentService;
+    private final ProjectService projectService;
+
+    public CommentController(CommentService commentService, ProjectService projectService) {
+        this.commentService = commentService;
+        this.projectService = projectService;
+    }
+
+    @PostMapping
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createComment(@Valid @RequestBody CreateCommentRequest commentRequest) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        Comment createdComment = commentService.createComment(commentRequest.getIssueId(), currentUserEmail, commentRequest.getContent());
+        return ResponseEntity.status(201).body(createdComment);
+    }
+
+    @DeleteMapping("/{commentId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> deleteComment(@PathVariable Long commentId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        commentService.deleteComment(commentId, currentUserEmail);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/issue/{issueId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getCommentsByIssueId(@PathVariable Long issueId) throws Exception {
+        return ResponseEntity.ok(commentService.findCommentsByIssueId(issueId));
+    }
+
+}
+package com.sprintflow.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.sprintflow.dto.IssueDTO;
+import com.sprintflow.entity.Issue;
+import com.sprintflow.request.IssueRequest;
+import com.sprintflow.service.IssueService;
+import com.sprintflow.service.ProjectService;
+import org.springframework.web.bind.annotation.PutMapping;
+import jakarta.validation.Valid;
+
+
+@RestController
+@RequestMapping("/api/issues")
+public class IssueController {
+
+    private final IssueService issueService;
+    private final ProjectService projectService;
+
+    public IssueController(IssueService issueService, ProjectService projectService) {
+        this.issueService = issueService;
+        this.projectService = projectService;
+    }
+
+    @PostMapping
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createIssue(@Valid @RequestBody IssueRequest issueRequest) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        Issue createdIssue = issueService.createIssue(issueRequest, currentUserEmail);
+        IssueDTO issueDTO = new IssueDTO();
+        issueDTO.setIssueId(createdIssue.getIssueId());
+        issueDTO.setIssueTitle(createdIssue.getIssueTitle());
+        issueDTO.setIssueDescription(createdIssue.getIssueDescription());
+        issueDTO.setIssueStatus(createdIssue.getIssueStatus());
+        issueDTO.setPriority(createdIssue.getPriority());
+        issueDTO.setDueDate(createdIssue.getDueDate() != null ? createdIssue.getDueDate().toString() : null);
+        issueDTO.setTags(createdIssue.getTags());
+        if (createdIssue.getProject() != null) {
+            issueDTO.setProjectId(createdIssue.getProject().getProjectId());
+            issueDTO.setProjectOwnerId(createdIssue.getProject().getProjectOwner() != null ? 
+                createdIssue.getProject().getProjectOwner().getUserId() : null);
+            issueDTO.setProjectName(createdIssue.getProject().getProjectName());
+        }
+        if (createdIssue.getAssignedUser() != null) {
+            issueDTO.setAssignedUserId(createdIssue.getAssignedUser().getUserId());
+            issueDTO.setAssignedUserName(createdIssue.getAssignedUser().getFullName());
+        }
+        return ResponseEntity.status(201).body(issueDTO);
+    }
+
+    @GetMapping("/{issueId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getIssueById(@PathVariable Long issueId) throws Exception {
+        Issue issue = issueService.getIssueById(issueId);
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.ensureProjectMemberOrOwner(issue.getProject().getProjectId(), currentUserEmail);
+        return ResponseEntity.ok(issue);
+    }
+
+    @GetMapping("/project/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getIssuesByProjectId(@PathVariable Long projectId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
+        return ResponseEntity.ok(issueService.getIssuesByProjectId(projectId));
+    }
+
+    @DeleteMapping("/{issueId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> deleteIssue(@PathVariable Long issueId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        issueService.deleteIssue(issueId, currentUserEmail);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{issueId}/assignee/{userId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> addUserToIssue(@PathVariable Long issueId, @PathVariable Long userId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        issueService.addUserToIssue(issueId, userId, currentUserEmail);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{issueId}/status/{status}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> updateIssueStatus(@PathVariable String status, @PathVariable Long issueId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        issueService.updateIssueStatus(issueId, status, currentUserEmail);
+        return ResponseEntity.ok().build();
+    }
+
+}
+package com.sprintflow.controller;
+
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.sprintflow.entity.Chat;
+import com.sprintflow.entity.Message;
+import com.sprintflow.service.MessageService;
+import com.sprintflow.service.ProjectService;
+import com.sprintflow.request.CreateMessageRequest;
+import jakarta.validation.Valid;
+
+@RestController
+@RequestMapping("/api/messages")
+public class MessageController {
+
+    private final MessageService messageService;
+    private final ProjectService projectService;
+
+    public MessageController(MessageService messageService, ProjectService projectService) {
+        this.messageService = messageService;
+        this.projectService = projectService;
+    }
+
+    @PostMapping("/send")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> sendMessage(@Valid @RequestBody CreateMessageRequest request) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.ensureProjectMemberOrOwner(request.getProjectId(), currentUserEmail);
+        
+        Chat chat = projectService.getProjectById(request.getProjectId()).getChat();
+        if (chat == null) {
+            throw new IllegalArgumentException("Chat not found for the project");
+        }
+        Message message = messageService.sendMessage(currentUserEmail, request.getProjectId(), request.getContent());
+        return ResponseEntity.status(201).body(message);
+    }
+
+    @GetMapping("/project/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getMessagesByProjectId(@PathVariable Long projectId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
+        List<Message> messages = messageService.getMessagesByProjectId(projectId);
+        return ResponseEntity.ok(messages);
+    }
+
+    // MAKE SURE YOU HAVE THIS EXACT ANNOTATION
+    @GetMapping("/chat/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getMessagesByChatId(@PathVariable Long projectId) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
+            List<Message> messages = messageService.getMessagesByProjectId(projectId);
+            return ResponseEntity.ok(messages);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+}
+package com.sprintflow.controller;
+
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.razorpay.PaymentLink;
+import com.razorpay.RazorpayClient;
+import com.sprintflow.entity.PlanType;
+import com.sprintflow.entity.User;
+import com.sprintflow.response.PaymentLinkResponse;
+import com.sprintflow.service.UserService;
+
+@RestController
+@RequestMapping("/api/payments")
+public class PaymentController {
+
+    @Value("${razorpay.keyId}")
+    private String apiKey;
+
+    @Value("${razorpay.keySecret}")
+    private String apiSecret;
+
+    private final UserService userService;
+
+    public PaymentController(UserService userService) {
+        this.userService = userService;
+    }
+
+    @PostMapping("/{planType}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createPaymentLink(@PathVariable PlanType planType) {
+
+        String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userService.getUserByEmail(currentEmail);
+        long amountInPaise = Math.round(planType.getPrice() * 100);
+
+        try {
+            RazorpayClient razorpayClient = new RazorpayClient(apiKey, apiSecret);
+
+            JSONObject paymentLinkRequest = buildPaymentLinkRequest(user, planType, amountInPaise);
+
+            PaymentLink payment = razorpayClient.paymentLink.create(paymentLinkRequest);
+
+            String paymentLinkId = payment.get("id");
+            String paymentLink = payment.get("short_url");
+
+            PaymentLinkResponse response = new PaymentLinkResponse(paymentLink, paymentLinkId);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body("Error creating payment link: " + e.getMessage());
+        }
+    }
+
+    private JSONObject buildPaymentLinkRequest(User user, PlanType planType, long amountInPaise) {
+
+        JSONObject paymentLinkRequest = new JSONObject();
+        paymentLinkRequest.put("amount", amountInPaise);
+        paymentLinkRequest.put("currency", "INR");
+        paymentLinkRequest.put("description", "Payment for " + planType.name() + " plan");
+
+        JSONObject customer = new JSONObject();
+        customer.put("name", user.getFullName());
+        customer.put("email", user.getEmail());
+        paymentLinkRequest.put("customer", customer);
+
+        JSONObject notify = new JSONObject();
+        notify.put("email", true);
+        paymentLinkRequest.put("notify", notify);
+
+        paymentLinkRequest.put(
+                "callback_url",
+                "https://localhost:5173/upgrade-plan/success?planType=" + planType.name()
+        );
+
+        return paymentLinkRequest;
+    }
+}
+package com.sprintflow.controller;
+
+import com.sprintflow.dto.ProjectDTO;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
+
+import com.sprintflow.entity.Invitation;
+import com.sprintflow.entity.Project;
+import com.sprintflow.entity.User;
+import com.sprintflow.request.ProjectRequest;
+import com.sprintflow.request.InviteRequest;
+import com.sprintflow.response.MessageResponse;
+import com.sprintflow.service.ProjectService;
+import com.sprintflow.service.UserService;
+import com.sprintflow.service.InvitationService;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/projects")
+public class ProjectController {
+
+    private final ProjectService projectService;
+    private final UserService userService;
+    private final InvitationService invitationService;
+
+    public ProjectController(ProjectService projectService, UserService userService, InvitationService invitationService) {
+        this.projectService = projectService;
+        this.userService = userService;
+        this.invitationService = invitationService;
+    }
+
+    @PostMapping
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createProject(@Valid @RequestBody ProjectRequest request) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            User projectOwner = userService.findByEmail(currentUserEmail);
+
+            Project project = new Project();
+            project.setProjectName(request.getProjectName());
+            project.setProjectDescription(request.getProjectDescription());
+            project.setCategory(request.getCategory());
+            project.setTags(request.getTags());
+
+            Project createdProject = projectService.createProject(project, projectOwner);
+
+            ProjectDTO dto = new ProjectDTO();
+            dto.setProjectId(createdProject.getProjectId());
+            dto.setProjectName(createdProject.getProjectName());
+            dto.setProjectDescription(createdProject.getProjectDescription());
+            dto.setCategory(createdProject.getCategory());
+            dto.setTags(createdProject.getTags());
+
+            // Project Owner
+            ProjectDTO.ProjectOwnerDTO ownerDto = new ProjectDTO.ProjectOwnerDTO(
+                    createdProject.getProjectOwner().getUserId(),
+                    createdProject.getProjectOwner().getFullName(),
+                    createdProject.getProjectOwner().getEmail()
+            );
+            dto.setProjectOwner(ownerDto);
+
+            // Project Members
+            List<ProjectDTO.ProjectOwnerDTO> members = createdProject.getProjectMembers()
+                    .stream()
+                    .map(member -> new ProjectDTO.ProjectOwnerDTO(
+                            member.getUserId(),
+                            member.getFullName(),
+                            member.getEmail()
+                    ))
+                    .collect(Collectors.toList());
+
+            dto.setProjectMembers(members);
+
+            // Chat (if available)
+            if (createdProject.getChat() != null) {
+                dto.setChat(new ProjectDTO.ChatDTO(
+                        createdProject.getChat().getChatId(),
+                        createdProject.getChat().getChatName()
+                ));
+            }
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getProjectById(@PathVariable Long projectId) throws Exception {
+        Project project = projectService.getProjectById(projectId);
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
+        return ResponseEntity.ok(project);
+    }
+
+    @GetMapping
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getProjects(@RequestParam(required = false) String category,
+                                         @RequestParam(required = false) String tag) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            User teamMember = userService.findByEmail(currentUserEmail);
+            return ResponseEntity.ok(projectService.getProjectByTeamMember(teamMember, category, tag));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+        }
+    }
+
+
+    @PutMapping("/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> updateProject(@PathVariable Long projectId, @Valid @RequestBody ProjectRequest request) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            projectService.ensureProjectOwner(projectId, currentUserEmail);
+            Project updatedProject = new Project();
+            updatedProject.setProjectName(request.getProjectName());
+            updatedProject.setProjectDescription(request.getProjectDescription());
+            updatedProject.setCategory(request.getCategory());
+            updatedProject.setTags(request.getTags());
+            Project project = projectService.updateProject(projectId, updatedProject);
+            return ResponseEntity.ok(project);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+    }
+
+    
+    
+    @DeleteMapping("/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> deleteProject(@PathVariable Long projectId) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            projectService.ensureProjectOwner(projectId, currentUserEmail);
+            projectService.deleteProject(projectId);
+            return ResponseEntity.ok(new MessageResponse("Project deleted successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> searchProjects(@RequestParam(required = false) String name) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            User teamMember = userService.findByEmail(currentUserEmail);
+            return ResponseEntity.ok(projectService.searchProjects(name, teamMember));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{projectId}/chat")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getChatByProjectId(@PathVariable Long projectId) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
+            return ResponseEntity.ok(projectService.getChatByProjectId(projectId));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/invite")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MessageResponse> inviteUserToProject(@Valid @RequestBody InviteRequest inviteRequest) {
+
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            projectService.ensureProjectOwner(inviteRequest.getProjectId(), currentUserEmail);
+            User user = userService.getUserByEmail(inviteRequest.getUserEmail());
+            if(user == null){
+                return ResponseEntity.badRequest().body(new MessageResponse("User not found. They must register first."));
+            }
+            invitationService.sendInvitation(user.getEmail(),inviteRequest.getProjectId());
+            return ResponseEntity.ok(new MessageResponse("Invitation sent successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse(e.getMessage()));
+        }
+    }
+
+
+    @GetMapping("/invite")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MessageResponse> acceptInvitation(@RequestParam String token) {
+        try {
+            Invitation invitation = invitationService.acceptInvitation(token);
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            if (!currentUserEmail.equals(invitation.getUserEmail())) {
+                throw new SecurityException("This invitation was not sent to you");
+            }
+            User currentUser = userService.findByEmail(currentUserEmail);
+            projectService.addTeamMember(invitation.getProjectId(), currentUser.getUserId());
+            return ResponseEntity.ok(new MessageResponse("Invitation accepted successfully."));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse(e.getMessage()));
+        }
+    }
+     
+
+}
+package com.sprintflow.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.sprintflow.entity.PlanType;
+import com.sprintflow.entity.User;
+import com.sprintflow.service.SubscriptionService;
+import com.sprintflow.service.UserService;
+
+@RestController
+@RequestMapping("/api/subscriptions")
+public class SubscriptionController {
+
+    private final SubscriptionService subscriptionService;
+    private final UserService userService;
+
+    public SubscriptionController(SubscriptionService subscriptionService, UserService userService) {
+        this.subscriptionService = subscriptionService;
+        this.userService = userService;
+    }
+
+    @PostMapping("/create")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createSubscription() {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            User user = userService.findByEmail(currentUserEmail);
+            subscriptionService.createSubscription(user);
+            return ResponseEntity.ok("Subscription created successfully for user: " + currentUserEmail);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/user")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getUserSubscription() {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            User user = userService.findByEmail(currentUserEmail);
+            return ResponseEntity.ok(subscriptionService.getSubscriptionByUserId(user.getUserId()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/update/{planType}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> updateUserSubscription(@PathVariable String planType) {
+        try {
+            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            User user = userService.findByEmail(currentUserEmail);
+            subscriptionService.updateSubscription(user.getUserId(), PlanType.valueOf(planType.toUpperCase()));
+            return ResponseEntity.ok("Subscription updated successfully for user: " + currentUserEmail);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+}
+package com.sprintflow.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class IssueDTO {
+
+    private Long issueId;
+    private String issueTitle;
+    private String issueDescription;
+    private String issueStatus;
+    private Long projectId;
+    private String priority;
+    private String dueDate;
+    private List<String> tags = new ArrayList<>();
+
+    // Lightweight project info instead of full Project entity
+    private Long projectOwnerId;
+    private String projectName;
+
+    // Lightweight assignee info instead of full User entity
+    private Long assignedUserId;
+    private String assignedUserName;
+
+}
+package com.sprintflow.dto;
+
+import java.util.List;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProjectDTO {
+
+    private Long projectId;
+    private String projectName;
+    private String projectDescription;
+    private String category;
+    private List<String> tags;
+    private ProjectOwnerDTO projectOwner;
+    private List<ProjectOwnerDTO> projectMembers;
+    private ChatDTO chat;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ProjectOwnerDTO {
+        private Long userId;
+        private String fullName;
+        private String email;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ChatDTO {
+        private Long chatId;
+        private String chatName;
+    }
+}
+package com.sprintflow.entity;
+
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Chat {
+
+    @Id
+    @GeneratedValue(strategy = jakarta.persistence.GenerationType.AUTO)
+    private Long chatId;
+
+    private String chatName;
+
+    @OneToOne
+    private Project project;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "chat", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<Message> messages = new java.util.ArrayList<>();
+
+    @ManyToMany
+    private List<User> participants = new java.util.ArrayList<>();
+
+}
+package com.sprintflow.entity;
+
+import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Comment {
+
+    @Id
+    @GeneratedValue(strategy = jakarta.persistence.GenerationType.AUTO)
+    private Long commentId;
+
+    private String commentText;
+
+    private LocalDateTime createdAt;
+
+    @ManyToOne
+    private User createdBy;
+
+    @JsonIgnore
+    @ManyToOne
+    private Issue issue;
+
+}
+package com.sprintflow.entity;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Invitation {
+
+    @Id
+    @GeneratedValue(strategy = jakarta.persistence.GenerationType.AUTO)
+    private Long id;
+
+    private String token;
+    private String userEmail;
+    private Long projectId;
+    private LocalDateTime createdAt;
+    private LocalDateTime expiryDate;
+    private boolean used;
+
+}
+package com.sprintflow.entity;
+
+import java.time.LocalDate;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import lombok.Data;
+
+@Entity
+@Data
+public class Issue {
+
+    @Id
+    @GeneratedValue(strategy = jakarta.persistence.GenerationType.AUTO)
+    private Long issueId;
+
+    private String issueTitle;
+    private String issueDescription;
+    private String issueStatus;
+    private String priority;
+    private LocalDate dueDate;
+    @ElementCollection
+    @CollectionTable(name = "issue_tags", joinColumns = @JoinColumn(name = "issue_id"))
+    private List<String> tags = new java.util.ArrayList<>();
+
+    @ManyToOne
+    private User assignedUser;
+
+    @JsonIgnore
+    @ManyToOne
+    private Project project;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "issue", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<Comment> comments = new java.util.ArrayList<>();
+
+    
+
+}
+package com.sprintflow.entity;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Entity;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Message {
+
+    @Id
+    @GeneratedValue(strategy = jakarta.persistence.GenerationType.AUTO)
+    private Long messageId;
+
+    private String messageText;
+
+    private LocalDateTime createdAt;
+
+    @ManyToOne
+    private Chat chat;
+
+    @ManyToOne
+    private User sender;
+
+}
+package com.sprintflow.entity;
+
+public enum PlanType {
+
+    FREE(0.0),
+    MONTHLY(9.99),
+    YEARLY(99.99);
+
+    private final double price;
+
+    PlanType(double price) {
+        this.price = price;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+}
+package com.sprintflow.entity;
+
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Project {
+
+    @Id
+    @GeneratedValue(strategy = jakarta.persistence.GenerationType.AUTO)
+    private Long projectId;
+
+    private String projectName;
+    private String projectDescription;
+    private String category;
+
+    @ElementCollection
+    @CollectionTable(name = "project_tags", joinColumns = @JoinColumn(name = "project_id"))
+    private List<String> tags = new java.util.ArrayList<>();
+
+    @JsonIgnore
+    @OneToOne(mappedBy = "project", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private Chat chat;
+
+    @ManyToOne
+    private User projectOwner;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "project", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private List<Issue> issues = new java.util.ArrayList<>();
+
+    @ManyToMany
+    private List<User> projectMembers = new java.util.ArrayList<>();
+
+}
+package com.sprintflow.entity;
+
+import java.time.LocalDate;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToOne;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Subscription {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private Long subscriptionId;
+    private LocalDate startDate;
+    private LocalDate endDate;
+
+    @Enumerated(EnumType.STRING)
+    private PlanType planType;
+
+    private boolean isValid;
+
+    @OneToOne
+    private User user;
+}
+package com.sprintflow.entity;
+
+import lombok.Data;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import java.util.ArrayList;
+import java.util.Objects;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+
+@Entity
+@Getter
+@Setter
+@ToString(exclude = {"assignedIssues","roles"})
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private Long userId;
+
+    @NotBlank(message = "Full name is required")
+    private String fullName;
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email must be valid")
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, message = "Password must be at least 8 characters long")
+    @JsonIgnore
+    private String password;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "assignedUser", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Issue> assignedIssues = new ArrayList<>();
+
+    private int projectSize;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "role")
+    private List<String> roles = new ArrayList<>();
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof User user)) {
+            return false;
+        }
+        return Objects.equals(getUserId(), user.getUserId());
+    }
+
+    @Override
+    public int hashCode(){
+        return getClass().hashCode();
+    }
+
+}
+package com.sprintflow.exception;
+
+import java.time.LocalDateTime;
+
+public record ApiErrorResponse(
+        LocalDateTime timestamp,
+        int status,
+        String error,
+        String message,
+        String path) {
+}
+package com.sprintflow.exception;
+
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import jakarta.servlet.http.HttpServletRequest;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Validation failed");
+        body.put("path", request.getRequestURI());
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
+            String code = fieldError.getCode();
+            if (code != null && (code.equals("NotBlank") || code.equals("NotNull"))) {
+                fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());
+            } else if (!fieldErrors.containsKey(fieldError.getField())) {
+                fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());
+            }
+        }
+        body.put("fields", fieldErrors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiErrorResponse> handleBadCredentials(BadCredentialsException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ApiErrorResponse(LocalDateTime.now(), HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiErrorResponse(LocalDateTime.now(), HttpStatus.FORBIDDEN.value(), "Forbidden", ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ApiErrorResponse> handleSecurityException(SecurityException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiErrorResponse(LocalDateTime.now(), HttpStatus.FORBIDDEN.value(), "Forbidden", ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(LocalDateTime.now(), HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ApiErrorResponse(LocalDateTime.now(), HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error", ex.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleResourceNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(LocalDateTime.now(), HttpStatus.NOT_FOUND.value(), "Not Found", ex.getMessage(), request.getRequestURI()));
+    }
+}
+package com.sprintflow.exception;
+
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
+package com.sprintflow.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.sprintflow.entity.Chat;
+
+@Repository
+public interface ChatRepository extends JpaRepository<Chat, Long> {
+    // You can define custom query methods here if needed
+
+
+}
+package com.sprintflow.repository;
+
+import com.sprintflow.entity.Comment;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+    List<Comment> findByIssue_IssueId(Long issueId);
+
+}
+package com.sprintflow.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.sprintflow.entity.Invitation;
+
+@Repository
+public interface InvitationRepository extends JpaRepository<Invitation, Long> {
+    // You can define custom query methods here if needed
+
+    Invitation findByToken(String token);
+    Invitation findByUserEmail(String userEmail);
+    
+
+}
+package com.sprintflow.repository;
+
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.sprintflow.entity.Issue;
+
+
+public interface IssueRepository extends JpaRepository<Issue, Long> {
+    // You can define custom query methods here if needed
+    public List<Issue> findByProject_ProjectId(Long projectId);
+
+
+}
+package com.sprintflow.repository;
+
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.sprintflow.entity.Message;
+
+public interface MessageRepository extends JpaRepository<Message, Long> {
+
+    List<Message> findByChat_ChatIdOrderByCreatedAtAsc(Long chatId);
+    
+
+}
+package com.sprintflow.repository;
+
+import com.sprintflow.entity.Project;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.sprintflow.entity.User;
+import java.util.List;
+
+public interface ProjectRepository extends JpaRepository<Project, Long> {
+
+    List<Project> findByProjectNameContaining(String projectName);
+    List<Project> findByProjectOwner(User projectOwner);
+    List<Project> findByProjectNameContainingAndProjectMembersContaining(String name, User teamMember);
+
+    @Query("SELECT DISTINCT p FROM Project p LEFT JOIN p.projectMembers m WHERE m = :user OR p.projectOwner = :user")
+    List<Project> findProjectsForMember(@Param("user") User user);
+
+    @Query("SELECT DISTINCT p FROM Project p LEFT JOIN p.projectMembers m WHERE m = :user AND (:category IS NULL OR LOWER(p.category) = LOWER(:category)) AND (:tag IS NULL OR :tag MEMBER OF p.tags)")
+    List<Project> findProjectsForMemberWithFilters(@Param("user") User user, @Param("category") String category, @Param("tag") String tag);
+
+}
+package com.sprintflow.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.sprintflow.entity.Subscription;
+
+public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
+
+    Subscription findByUser_UserId(Long userId);
+
+}
+package com.sprintflow.repository;
+
+import com.sprintflow.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    User findByEmail(String email);
+
+    User findByUserId(Long userId);
+
+}
+package com.sprintflow.request;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CreateCommentRequest {
+
+    @NotNull(message = "Issue ID is required")
+    private Long issueId;
+    @NotBlank(message = "Content is required")
+    private String content;
+
+}
+package com.sprintflow.request;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CreateMessageRequest {
+
+    @NotNull(message = "Project ID is required")
+    private Long projectId;
+    @NotBlank(message = "Message text is required")
+    private String content;
+
+}
+package com.sprintflow.request;
+
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
+import lombok.Data;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotNull;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class InviteRequest {
+
+    @NotNull
+    private Long projectId;
+    @Email(message = "Email must be valid")
+    private String userEmail;
+
+}
+package com.sprintflow.request;
+
+import java.time.LocalDate;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class IssueRequest {
+
+    @NotBlank(message = "Issue title is required")
+    private String title;
+    @NotBlank
+    private String description;
+    @NotBlank
+    private String status;
+    @NotNull(message = "Project ID is required")
+    private Long projectId;
+    @NotBlank
+    private String priority;
+    @NotNull
+    private LocalDate dueDate; 
+
+}
+package com.sprintflow.request;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+public class LoginRequest {
+
+    @NotBlank
+    @Email(message = "Email must be valid")
+    private String email;
+
+    @NotBlank
+    @Size(min = 8)
+    private String password;
+}
+package com.sprintflow.request;
+
+import java.util.List;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ProjectRequest {
+
+    @NotBlank(message = "Project name is required")
+    private String projectName;
+
+    @NotBlank(message = "Project description is required")
+    private String projectDescription;
+
+    @NotBlank(message = "Category is required")
+    private String category;
+
+    private List<String> tags;
+}
+package com.sprintflow.request;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+public class RegisterRequest {
+
+    @NotBlank(message = "Full name is required")
+    private String fullName;
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email must be valid")
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, message = "Password must be at least 8 characters long")
+    private String password;
+}
+package com.sprintflow.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class AuthResponse {
+
+    private String jwt;
+    private String message;
+
+}
+package com.sprintflow.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class MessageResponse {
+    
+    private String message;
+
+}
+package com.sprintflow.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class PaymentLinkResponse {
+
+    private String paymentLink;
+    private String paymentLinkId;
+
+}
+package com.sprintflow.service;
+
+import org.springframework.stereotype.Service;
+
+import com.sprintflow.entity.Chat;
+import com.sprintflow.repository.ChatRepository;
+
+@Service
+public class ChatService {
+
+    private final ChatRepository chatRepository;
+
+    public ChatService(ChatRepository chatRepository) {
+        this.chatRepository = chatRepository;
+    }
+
+    public Chat createChat(Chat chat) {
+        return chatRepository.save(chat);
+    }
+
+}
+package com.sprintflow.service;
+
+import org.springframework.stereotype.Service;
+import java.util.Objects;
+import com.sprintflow.entity.Comment;
+import com.sprintflow.entity.Issue;
+import com.sprintflow.entity.User;
+import com.sprintflow.repository.CommentRepository;
+import com.sprintflow.repository.IssueRepository;
+import com.sprintflow.repository.UserRepository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CommentService {
+
+    private final CommentRepository commentRepository;
+    private final IssueRepository issueRepository;
+    private final UserRepository userRepository;
+
+    public CommentService(CommentRepository commentRepository, IssueRepository issueRepository, UserRepository userRepository) {
+        this.commentRepository = commentRepository;
+        this.issueRepository = issueRepository;
+        this.userRepository = userRepository;
+    }
+
+    @Transactional
+    public Comment createComment(Long issueId, String userEmail, String content) {
+        Long resolvedIssueId = Objects.requireNonNull(issueId, "issueId must not be null");
+        String resolvedUserEmail = Objects.requireNonNull(userEmail, "userEmail must not be null");
+        Optional<Issue> issue = issueRepository.findById(resolvedIssueId);
+        User user = userRepository.findByEmail(resolvedUserEmail);
+        if(issue.isEmpty() || user == null) {
+            throw new IllegalArgumentException("Invalid issueId or user");
+        }
+        Issue issueEntity = issue.get();
+        Comment comment = new Comment();
+        comment.setIssue(issueEntity);
+        comment.setCreatedBy(user);
+        comment.setCreatedAt(LocalDateTime.now());
+        comment.setCommentText(content);
+
+        Comment savedComment = commentRepository.save(comment);
+        issueEntity.getComments().add(savedComment);
+        return savedComment;
+    }
+
+    @Transactional
+    public void deleteComment(Long commentId, String userEmail) {
+        Long resolvedCommentId = Objects.requireNonNull(commentId, "commentId must not be null");
+        String resolvedUserEmail = Objects.requireNonNull(userEmail, "userEmail must not be null");
+        Optional<Comment> comment = commentRepository.findById(resolvedCommentId);
+        User user = userRepository.findByEmail(resolvedUserEmail);
+        if(comment.isEmpty() || user == null) {
+            throw new IllegalArgumentException("Invalid commentId or user");
+        }
+        Comment commentEntity = comment.get();
+
+        if(commentEntity.getCreatedBy().getUserId().equals(user.getUserId())) {
+            commentRepository.delete(commentEntity);
+        } else {
+            throw new SecurityException("User is not authorized to delete this comment");
+        }
+    }
+
+    public List<Comment> findCommentsByIssueId(Long issueId) {
+        Long resolvedIssueId = Objects.requireNonNull(issueId, "issueId must not be null");
+        return commentRepository.findByIssue_IssueId(resolvedIssueId);
+    }
+
+}
+package com.sprintflow.service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import com.sprintflow.entity.User;
+import com.sprintflow.repository.UserRepository;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+@Service
+public class CustomUserDetailsService implements UserDetailsService {
+
+    private final UserRepository userRepository;
+
+    public CustomUserDetailsService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @Override
+    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with email: " + email);
+        }
+
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        if (user.getRoles() != null) {
+            for (String role : user.getRoles()) {
+                authorities.add(new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role));
+            }
+        }
+        // Default role if none assigned
+        if (authorities.isEmpty()) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+        }
+
+        return new org.springframework.security.core.userdetails.User(user.getEmail(), user.getPassword(), authorities);
+    }
+}
+package com.sprintflow.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.stereotype.Service;
+
+import jakarta.mail.internet.MimeMessage;
+
+@Service
+public class EmailService {
+
+    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
+
+    private final JavaMailSender javaMailSender;
+
+    public EmailService(JavaMailSender javaMailSender) {
+        this.javaMailSender = javaMailSender;
+    }
+
+    public void sendEmailWithToken(String userEmail, String link) {
+        MimeMessage message = javaMailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, "utf-8");
+        String subject = "Join Project Invitation";
+        String content = "<p>Hello,</p>"
+                + "<p>You have been invited to join a project. Please click the link below to accept the invitation:</p>"
+                + "<p><a href=\"" + link + "\">Accept Invitation</a></p>"
+                + "<br>"
+                + "<p>If you did not expect this invitation, please ignore this email.</p>";
+        try {
+            helper.setTo(userEmail);
+            helper.setSubject(subject);
+            helper.setText(content, true);
+            javaMailSender.send(message);
+        } catch (Exception e) {
+            logger.error("Failed to send invitation email to {}: {}", userEmail, e.getMessage(), e);
+        }
+    }
+
+}
+package com.sprintflow.service;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+
+import com.sprintflow.entity.Invitation;
+import com.sprintflow.repository.InvitationRepository;
+
+@Service
+public class InvitationService {
+
+    private final InvitationRepository invitationRepository;
+    private final EmailService emailService;
+    private final String frontendUrl;
+
+    public InvitationService(InvitationRepository invitationRepository, EmailService emailService, @Value("${sprintflow.frontend.url}") String frontendUrl) {
+        this.invitationRepository = invitationRepository;
+        this.emailService = emailService;
+        this.frontendUrl = frontendUrl;
+    }
+
+    @Transactional
+    public void sendInvitation(String userEmail, long projectId) {
+        Invitation existing = invitationRepository.findByUserEmail(userEmail);
+        if (existing != null && existing.getProjectId().equals(projectId)) {
+            invitationRepository.delete(existing);
+        }
+
+        String invitationToken = UUID.randomUUID().toString();
+        Invitation invitation = new Invitation();
+        invitation.setToken(invitationToken);
+        invitation.setUserEmail(userEmail);
+        invitation.setProjectId(projectId);
+        invitation.setCreatedAt(LocalDateTime.now());
+        invitation.setExpiryDate(LocalDateTime.now().plusDays(7));
+        invitation.setUsed(false);
+        invitationRepository.save(invitation);
+
+        String invitationLink = frontendUrl + "/invitations/accept_invitation?token=" + invitationToken;
+        emailService.sendEmailWithToken(userEmail, invitationLink);
+    }
+
+    @Transactional
+    public Invitation acceptInvitation(String token) throws Exception {
+        Invitation invitation = invitationRepository.findByToken(token);
+        if (invitation == null) {
+            throw new Exception("Invalid invitation token");
+        }
+        if (invitation.isUsed()) {
+            throw new Exception("Invitation has already been used");
+        }
+        if (invitation.getExpiryDate() != null && invitation.getExpiryDate().isBefore(LocalDateTime.now())) {
+            invitationRepository.delete(invitation);
+            throw new Exception("Invitation has expired");
+        }
+        invitation.setUsed(true);
+        invitationRepository.save(invitation);
+        return invitation;
+    }
+
+    public String getTokenByUserEmail(String userEmail){
+        Invitation invitation = invitationRepository.findByUserEmail(userEmail);
+        if (invitation != null) {
+            return invitation.getToken();
+        }
+        throw new RuntimeException("No invitation found for the provided email: " + userEmail);
+    }
+
+    @Transactional
+    public void deleteToken(String token) {
+        Invitation invitation = invitationRepository.findByToken(token);
+        if (invitation != null) {
+            invitationRepository.deleteById(invitation.getId());
+        }
+    }
+
+}
+package com.sprintflow.service;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.Objects;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.sprintflow.entity.Issue;
+import com.sprintflow.repository.IssueRepository;
+import com.sprintflow.request.IssueRequest;
+import com.sprintflow.entity.Project;
+import com.sprintflow.entity.User;
+
+@Service
+public class IssueService {
+
+    private final IssueRepository issueRepository;
+    private final ProjectService projectService;
+    private final UserService userService;
+
+    public IssueService(IssueRepository issueRepository, ProjectService projectService, UserService userService) {
+        this.issueRepository = issueRepository;
+        this.projectService = projectService;
+        this.userService = userService;
+    }
+
+    @Transactional
+    public Issue createIssue(IssueRequest issue) throws Exception {
+        Project project = projectService.getProjectById(issue.getProjectId());
+        Issue newIssue = new Issue();
+        newIssue.setIssueTitle(issue.getTitle());
+        newIssue.setIssueDescription(issue.getDescription());
+        newIssue.setIssueStatus(issue.getStatus());
+        newIssue.setPriority(issue.getPriority());
+        newIssue.setDueDate(issue.getDueDate());
+        newIssue.setProject(project);
+        return issueRepository.save(newIssue);
+    }
+
+    public Issue createIssue(IssueRequest issue, String actorEmail) throws Exception {
+        projectService.ensureProjectMemberOrOwner(issue.getProjectId(), actorEmail);
+        return createIssue(issue);
+    }
+
+    public Issue getIssueById(Long issueId) throws Exception {
+        Long resolvedIssueId = Objects.requireNonNull(issueId, "issueId must not be null");
+        Optional<Issue> issue = issueRepository.findById(resolvedIssueId);
+        if (!issue.isPresent()) {
+            throw new com.sprintflow.exception.ResourceNotFoundException("Issue not found with id: " + issueId);
+        }
+        return issue.get();
+    }
+
+    public List<Issue> getAllIssues() {
+        return issueRepository.findAll();
+    }
+
+    public List<Issue> getIssuesByProjectId(Long projectId) {
+        return issueRepository.findByProject_ProjectId(projectId);
+    }
+
+    @Transactional
+    public void deleteIssue(Long issueId) throws Exception {
+        Long resolvedIssueId = Objects.requireNonNull(issueId, "issueId must not be null");
+        Optional<Issue> issue = issueRepository.findById(resolvedIssueId);
+        if (!issue.isPresent()) {
+            throw new com.sprintflow.exception.ResourceNotFoundException("Issue not found with id: " + resolvedIssueId);
+        }
+        issueRepository.deleteById(resolvedIssueId);
+    }
+
+    @Transactional
+    public void deleteIssue(Long issueId, String actorEmail) throws Exception {
+        Issue issue = getIssueById(issueId);
+        projectService.ensureProjectMemberOrOwner(issue.getProject().getProjectId(), actorEmail);
+        deleteIssue(issueId);
+    }
+
+    @Transactional
+    public Issue addUserToIssue(Long issueId, Long userId) throws Exception {
+        User user = userService.getUserByUserId(userId);
+        Issue issue = getIssueById(issueId);
+        issue.setAssignedUser(user);
+        return issueRepository.save(issue);
+    }
+
+    @Transactional
+    public Issue addUserToIssue(Long issueId, Long userId, String actorEmail) throws Exception {
+        Issue issue = getIssueById(issueId);
+        projectService.ensureProjectOwner(issue.getProject().getProjectId(), actorEmail);
+        return addUserToIssue(issueId, userId);
+    }
+
+    @Transactional
+    public Issue updateIssue(Long issueId, IssueRequest issueRequest) throws Exception {
+        Issue existingIssue = getIssueById(issueId);
+        existingIssue.setIssueTitle(issueRequest.getTitle());
+        existingIssue.setIssueDescription(issueRequest.getDescription());
+        existingIssue.setIssueStatus(issueRequest.getStatus());
+        existingIssue.setPriority(issueRequest.getPriority());
+        existingIssue.setDueDate(issueRequest.getDueDate());
+        return issueRepository.save(existingIssue);
+    }
+
+    @Transactional
+    public Issue updateIssue(Long issueId, IssueRequest issueRequest, String actorEmail) throws Exception {
+        Issue existingIssue = getIssueById(issueId);
+        projectService.ensureProjectMemberOrOwner(existingIssue.getProject().getProjectId(), actorEmail);
+        return updateIssue(issueId, issueRequest);
+    }
+
+    @Transactional
+    public Issue updateIssueStatus(Long issueId, String status) throws Exception {
+        Issue existingIssue = getIssueById(issueId);
+        existingIssue.setIssueStatus(status);
+        return issueRepository.save(existingIssue);
+    }
+
+    @Transactional
+    public Issue updateIssueStatus(Long issueId, String status, String actorEmail) throws Exception {
+        Issue existingIssue = getIssueById(issueId);
+        projectService.ensureProjectMemberOrOwner(existingIssue.getProject().getProjectId(), actorEmail);
+        return updateIssueStatus(issueId, status);
+    }
+
+}
+package com.sprintflow.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.sprintflow.entity.Chat;
+import com.sprintflow.entity.Message;
+import com.sprintflow.entity.User;
+import com.sprintflow.repository.MessageRepository;
+import com.sprintflow.repository.UserRepository;
+
+@Service
+public class MessageService {
+
+    private final MessageRepository messageRepository;
+    private final UserRepository userRepository;
+    private final ProjectService projectService;
+
+    public MessageService(MessageRepository messageRepository, UserRepository userRepository, ProjectService projectService) {
+        this.messageRepository = messageRepository;
+        this.userRepository = userRepository;
+        this.projectService = projectService;
+    }
+
+    @Transactional
+    public Message sendMessage(String senderEmail, Long projectId, String content) throws Exception {
+        String resolvedSenderEmail = Objects.requireNonNull(senderEmail, "senderEmail must not be null");
+        Long resolvedProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
+        User sender = userRepository.findByEmail(resolvedSenderEmail);
+        if (sender == null) {
+            throw new IllegalArgumentException("User not found");
+        }
+        Chat chat = projectService.getChatByProjectId(resolvedProjectId);
+        Message message = new Message();
+        message.setSender(sender);
+        message.setChat(chat);
+        message.setMessageText(content);
+        message.setCreatedAt(LocalDateTime.now());
+        
+        Message savedMessage = messageRepository.save(message);
+        if (chat.getMessages() == null) {
+            chat.setMessages(new java.util.ArrayList<>());
+        }
+        chat.getMessages().add(savedMessage);
+        return savedMessage;
+    }
+
+    public List<Message> getMessagesByProjectId(Long projectId) throws Exception {
+        Long resolvedProjectId = Objects.requireNonNull(projectId, "projectId must not be null");
+        Chat chat = projectService.getChatByProjectId(resolvedProjectId);
+        return messageRepository.findByChat_ChatIdOrderByCreatedAtAsc(chat.getChatId());
+    }
+
+}
+package com.sprintflow.service;
+
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.sprintflow.entity.Chat;
+import com.sprintflow.entity.Project;
+import com.sprintflow.entity.User;
+import com.sprintflow.repository.ProjectRepository;
+
+@Service
+public class ProjectService {
+
+    private final ProjectRepository projectRepository;
+    private final UserService userService;
+    private final ChatService chatService;
+
+    public ProjectService(ProjectRepository projectRepository, UserService userService, ChatService chatService) {
+        this.projectRepository = projectRepository;
+        this.userService = userService;
+        this.chatService = chatService;
+    }
+
+    @Transactional
+    public Project createProject(Project project, User projectOwner) {
+        Project newProject = new Project();
+        newProject.setProjectName(project.getProjectName());
+        newProject.setProjectOwner(projectOwner);
+        newProject.setProjectDescription(project.getProjectDescription());
+        newProject.setTags(project.getTags());
+        newProject.setCategory(project.getCategory());
+        newProject.setProjectMembers(project.getProjectMembers());
+        if (newProject.getProjectMembers() == null) {
+            newProject.setProjectMembers(new java.util.ArrayList<>());
+        }
+        newProject.getProjectMembers().add(projectOwner); // Add the project owner to the project members
+        
+        Chat chat = new Chat();
+        chat.setProject(newProject);
+        newProject.setChat(chat);
+
+        return projectRepository.save(newProject);
+    }
+
+    public List<Project> getProjectByTeamMember(User teamMember, String category, String tag) throws Exception {
+        return projectRepository.findProjectsForMemberWithFilters(teamMember, category, tag);
+    }
+
+    public Project getProjectById(Long projectId) throws Exception {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new com.sprintflow.exception.ResourceNotFoundException("Project not found with id: " + projectId));
+    }
+
+    public void ensureProjectOwner(Long projectId, String userEmail) throws Exception {
+        Project project = getProjectById(projectId);
+        User actor = userService.findByEmail(userEmail);
+        if (project.getProjectOwner() == null || !project.getProjectOwner().getUserId().equals(actor.getUserId())) {
+            throw new SecurityException("User is not authorized for this project");
+        }
+    }
+
+    public void ensureProjectMemberOrOwner(Long projectId, String userEmail) throws Exception {
+        Project project = getProjectById(projectId);
+        User actor = userService.findByEmail(userEmail);
+        boolean isOwner = project.getProjectOwner() != null && project.getProjectOwner().getUserId().equals(actor.getUserId());
+        boolean isMember = project.getProjectMembers() != null && project.getProjectMembers().contains(actor);
+        if (!isOwner && !isMember) {
+            throw new SecurityException("User is not authorized for this project");
+        }
+    }
+
+    public void deleteProject(Long projectId) throws Exception {
+        Project project = getProjectById(projectId);
+        projectRepository.delete(project);
+    }
+
+    public Project updateProject(Long projectId, Project updatedProject) throws Exception {
+        Project existingProject = getProjectById(projectId);
+        existingProject.setProjectName(updatedProject.getProjectName());
+        existingProject.setProjectDescription(updatedProject.getProjectDescription());
+        existingProject.setCategory(updatedProject.getCategory());
+        existingProject.setTags(updatedProject.getTags());
+        return projectRepository.save(existingProject);
+    }
+
+    @Transactional
+    public void addTeamMember(Long projectId, Long userId) throws Exception {
+        Project project = getProjectById(projectId);
+        User user = userService.getUserByUserId(userId);
+        if (!project.getProjectMembers().contains(user)) {
+            project.getProjectMembers().add(user);
+            projectRepository.save(project);
+        } else {
+            throw new Exception("User is already a member of the project.");
+        }
+    }
+
+    @Transactional
+    public void removeTeamMember(Long projectId, Long userId) throws Exception {
+        Project project = getProjectById(projectId);
+        User user = userService.getUserByUserId(userId);
+        if (project.getProjectMembers().contains(user)) {
+            project.getProjectMembers().remove(user);
+            projectRepository.save(project);
+        } else {
+            throw new Exception("User is not a member of the project.");
+        }
+    }
+
+    public Chat getChatByProjectId(Long projectId) throws Exception {
+        Project project = getProjectById(projectId);
+        if (project.getChat() == null) {
+            throw new Exception("Chat not found for project with id: " + projectId);
+        }
+        return project.getChat();
+    }
+
+    public List<Project> searchProjects(String keyword, User user) { 
+        List<Project> projects = projectRepository.findByProjectNameContainingAndProjectMembersContaining(keyword, user);
+        return projects;
+    }
+    
+
+}
+package com.sprintflow.service;
+
+import java.time.LocalDate;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.sprintflow.entity.PlanType;
+import com.sprintflow.entity.Subscription;
+import com.sprintflow.entity.User;
+import com.sprintflow.repository.SubscriptionRepository;
+
+@Service
+public class SubscriptionService {
+
+    private final SubscriptionRepository subscriptionRepository;
+
+    public SubscriptionService(SubscriptionRepository subscriptionRepository) {
+        this.subscriptionRepository = subscriptionRepository;
+    }
+
+    @Transactional
+    public Subscription createSubscription(User user) {
+        Subscription subscription = new Subscription();
+        subscription.setUser(user);
+        subscription.setStartDate(LocalDate.now());
+        subscription.setEndDate(LocalDate.now().plusMonths(1));
+        subscription.setValid(true);
+        subscription.setPlanType(PlanType.FREE);
+
+        return subscriptionRepository.save(subscription);
+    }
+
+    public Subscription getSubscriptionByUserId(Long userId) {
+        Subscription subscription = subscriptionRepository.findByUser_UserId(userId);
+        if (subscription == null) {
+            throw new IllegalArgumentException("Subscription not found for user with ID: " + userId);
+        }
+        if (!isSubscriptionValid(subscription)) {
+            subscription.setPlanType(PlanType.FREE);
+            subscription.setStartDate(LocalDate.now());
+            subscription.setEndDate(LocalDate.now().plusMonths(1));
+            subscription.setValid(true);
+            subscriptionRepository.save(subscription);
+        }
+        return subscription;
+    }
+
+    @Transactional
+    public Subscription updateSubscription(Long userId, PlanType planType) {
+        Subscription subscription = subscriptionRepository.findByUser_UserId(userId);
+        if (subscription == null) {
+            throw new IllegalArgumentException("Subscription not found for user with ID: " + userId);
+        }
+
+        subscription.setPlanType(planType);
+        subscription.setStartDate(LocalDate.now());
+        if (planType == PlanType.FREE) {
+            subscription.setEndDate(LocalDate.now().plusMonths(1));
+        } else if (planType == PlanType.MONTHLY) {
+            subscription.setEndDate(LocalDate.now().plusMonths(1));
+        } else if (planType == PlanType.YEARLY) {
+            subscription.setEndDate(LocalDate.now().plusYears(1));
+        } else {
+            throw new IllegalArgumentException("Invalid plan type: " + planType);
+        }
+        subscription.setValid(true);
+
+        return subscriptionRepository.save(subscription);
+    }
+
+    public boolean isSubscriptionValid(Subscription subscription) {
+        if (subscription.getPlanType().equals(PlanType.FREE)) {
+            return true;
+        }
+
+        LocalDate endDate = subscription.getEndDate();
+        LocalDate currentDate = LocalDate.now();
+
+        return endDate != null && (endDate.isAfter(currentDate) || endDate.isEqual(currentDate));
+    }
+
+}
+package com.sprintflow.service;
+
+import com.sprintflow.repository.UserRepository;
+import com.sprintflow.entity.User;
+import java.util.Objects;
+
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.stereotype.Service;
+
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    
+    public User findByEmail(String email) {
+        User user = userRepository.findByEmail(email);
+        if (user == null) {
+            throw new BadCredentialsException("User not found with email: " + email);
+        }
+        return user;
+    }
+
+    public User updateUserProjectSize(User user, int newProjectSize) {
+        user.setProjectSize(user.getProjectSize() + newProjectSize);
+        return userRepository.save(user);
+    }
+
+
+    public User getUserByUserId(Long userId) {
+        Long resolvedUserId = Objects.requireNonNull(userId, "userId must not be null");
+        return userRepository.findById(resolvedUserId)
+                .orElseThrow(() -> new RuntimeException("User not found with userId: " + userId));
+    }
+
+
+    public User getUserByEmail(String userEmail) {
+        return userRepository.findByEmail(userEmail);
+    }
+
+}
