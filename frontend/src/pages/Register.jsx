@@ -33,12 +33,9 @@ const Register = () => {
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      const response = await api.post('/api/auth/register', data);
-      const { jwt } = response.data;
-      
-      // TODO: Verify how backend exposes user profile.
       const userData = { email: data.email, fullName: data.fullName }; 
-      login(userData, jwt);
+      await api.post('/api/auth/register', data);
+      login(userData);
       toast.success('Registration successful');
       navigate('/');
     } catch (error) {

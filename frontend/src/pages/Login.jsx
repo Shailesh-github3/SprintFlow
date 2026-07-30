@@ -32,12 +32,9 @@ const Login = () => {
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      const response = await api.post('/api/auth/login', data);
-      const { jwt } = response.data;
-      
-      // TODO: Verify how backend exposes user profile. Currently using decoded token or dummy user.
       const userData = { email: data.email }; 
-      login(userData, jwt);
+      await api.post('/api/auth/login', data);
+      login(userData);
       toast.success('Logged in successfully');
       navigate('/');
     } catch (error) {

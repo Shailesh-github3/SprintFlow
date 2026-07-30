@@ -24,7 +24,7 @@ const Dashboard = () => {
     queryKey: ['projects'],
     queryFn: async () => {
       const response = await api.get('/api/projects');
-      return response.data;
+      return response.data.content ?? response.data;
     },
     enabled: isAuthenticated,
   });
@@ -54,7 +54,8 @@ const Dashboard = () => {
   }
 
   // Calculate stats
-  const totalProjects = projects?.length || 0;
+  const projectList = Array.isArray(projects) ? projects : [];
+  const totalProjects = projectList.length || 0;
   
   // TODO: The backend specification currently lacks an endpoint to fetch all issues assigned to a user across all projects.
   // We need a /api/issues/assigned endpoint to accurately calculate total assigned issues and recent activity.
@@ -62,7 +63,7 @@ const Dashboard = () => {
   const recentActivityCount = 0; 
 
   // Process data for chart (Projects by Category)
-  const categoryCount = projects?.reduce((acc, project) => {
+  const categoryCount = projectList.reduce((acc, project) => {
     const category = project.category || 'Uncategorized';
     acc[category] = (acc[category] || 0) + 1;
     return acc;
@@ -158,7 +159,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {projects?.slice(0, 5).map(project => (
+              {projectList.slice(0, 5).map(project => (
                 <div key={project.projectId || project.id} className="flex items-center justify-between">
                   <div className="space-y-1">
                     <p className="text-sm font-medium leading-none">
@@ -176,7 +177,7 @@ const Dashboard = () => {
                 </div>
               ))}
               
-              {(!projects || projects.length === 0) && (
+              {projectList.length === 0 && (
                 <div className="text-sm text-muted-foreground text-center py-4">
                   No projects found.
                 </div>

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import api from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -11,41 +12,38 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return !!localStorage.getItem('token');
+    return !!localStorage.getItem('user');
   });
 
   useEffect(() => {
-    // Synchronously check authentication state on mount
-    // The lazy initialization in useState already sets the correct values,
-    // but we need to mark loading as complete after the first render
-    // so ProtectedRoute doesn't show a loading spinner unnecessarily.
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Token exists - ensure isAuthenticated is true
-      setIsAuthenticated(true);
-      const savedUser = localStorage.getItem('user');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
-    } else {
-      setIsAuthenticated(false);
+    const handleLogout = () => {
+      localStorage.removeItem('user');
       setUser(null);
-    }
+      setIsAuthenticated(false);
+      queryClient.clear();
+    };
+
+    window.addEventListener('auth:logout', handleLogout);
     setIsLoading(false);
+
+    return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
 
-  const login = (userData, token) => {
+  const login = (userData) => {
     localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', token);
     setUser(userData);
     setIsAuthenticated(true);
   };
 
   const queryClient = useQueryClient();
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch {
+      // ignore
+    }
     localStorage.removeItem('user');
-    localStorage.removeItem('token');
     setUser(null);
     setIsAuthenticated(false);
     queryClient.clear(); // Clear all cached data on logout

@@ -2,6 +2,7 @@
 package com.sprintflow.config;
 
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -40,14 +41,12 @@ public class JwtTokenValidator extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        String jwt = request.getHeader(JwtConstant.JWT_HEADER);
+        String jwt = resolveJwt(request);
 
-        if (jwt == null || !jwt.startsWith("Bearer ")) {
+        if (jwt == null) {
             filterChain.doFilter(request, response);
             return;
         }
-
-        jwt = jwt.substring(7);
 
         try {
             Claims claims = jwtService.parseClaims(jwt);
@@ -79,5 +78,25 @@ public class JwtTokenValidator extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private String resolveJwt(HttpServletRequest request) {
+        String authorizationHeader = request.getHeader(JwtConstant.JWT_HEADER);
+        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            return authorizationHeader.substring(7);
+        }
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (JwtConstant.JWT_COOKIE.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+
+        return null;
     }
 }
