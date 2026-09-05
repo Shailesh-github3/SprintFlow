@@ -83,7 +83,7 @@ class AuditServiceTest {
                 entry("John", AuditEntityType.ISSUE, 42L, AuditAction.CREATED, null, null));
         assertSummary("John assigned issue #42 to Priya",
                 entry("John", AuditEntityType.ISSUE, 42L, AuditAction.ASSIGNED, "Unassigned", "Priya"));
-        assertSummary("Priya changed issue #42: TODO → IN_PROGRESS",
+        assertSummary("Priya changed issue #42: TODO -> IN_PROGRESS",
                 entry("Priya", AuditEntityType.ISSUE, 42L, AuditAction.STATUS_CHANGED, "TODO", "IN_PROGRESS"));
         assertSummary("John invited alex@example.com",
                 entry("John", AuditEntityType.PROJECT_MEMBER, 7L, AuditAction.INVITED, null, "alex@example.com"));

@@ -87,7 +87,7 @@ public class AuditService {
             return actorName + " assigned issue #" + entityId + " to " + newValue;
         }
         if (entityType == AuditEntityType.ISSUE && action == AuditAction.STATUS_CHANGED) {
-            return actorName + " changed issue #" + entityId + ": " + oldValue + " → " + newValue;
+            return actorName + " changed issue #" + entityId + ": " + oldValue + " -> " + newValue;
         }
         if (entityType == AuditEntityType.PROJECT_MEMBER && action == AuditAction.INVITED) {
             return actorName + " invited " + newValue;

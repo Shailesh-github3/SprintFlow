@@ -11,7 +11,9 @@ services:
       MYSQL_PASSWORD: sprintflow
       MYSQL_ROOT_PASSWORD: root
     ports:
-      - "3306:3306"
+      # Host port 3307: a local MySQL often already occupies 3306.
+      # The API still reaches the DB as db:3306 inside the network.
+      - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
