@@ -26,7 +26,7 @@ async function runTests() {
   let token = "";
   let userId = null;
   try {
-    const res = await axios.post(`${BASE_URL}/auth/register`, {
+    const res = await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Project User",
       email: email,
       password: "SecurePass123"
@@ -145,7 +145,7 @@ async function runTests() {
   try {
     const res = await axios.get(`${BASE_URL}/api/projects/search?name=Banking`, authHeaders);
     assert(res.status === 200, "Search Projects status 200", res.status, 200);
-    assert(res.data.length > 0 && res.data[0].projectName.includes("Banking"), "Search Projects returns match");
+    assert(res.data.content.length > 0 && res.data.content[0].projectName.includes("Banking"), "Search Projects returns match");
   } catch (error) {
     assert(false, `Search Projects failed: ${error.message}`);
   }
@@ -164,7 +164,7 @@ async function runTests() {
   let email2 = `projectuser2_${Date.now()}@example.com`;
   let token2 = "";
   try {
-    const res2 = await axios.post(`${BASE_URL}/auth/register`, {
+    const res2 = await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Project User 2",
       email: email2,
       password: "SecurePass123"

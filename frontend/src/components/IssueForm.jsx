@@ -11,8 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 const issueSchema = z.object({
   title: z.string().min(3, { message: 'Title must be at least 3 characters' }),
   description: z.string().min(5, { message: 'Description must be at least 5 characters' }),
-  status: z.string().min(1, { message: 'Status is required' }),
-  priority: z.string().min(1, { message: 'Priority is required' }),
+  status: z.enum(['TODO', 'IN_PROGRESS', 'DONE'], { message: 'Status must be TODO, IN_PROGRESS, or DONE' }),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH'], { message: 'Priority must be LOW, MEDIUM, or HIGH' }),
   dueDate: z.string().min(1, { message: 'Due date is required' }),
 });
 

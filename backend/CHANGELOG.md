@@ -81,3 +81,74 @@ The following RBAC and endpoint security improvements have been applied:
 - Add OpenAPI documentation.
 - Add integration tests for full request flows.
 - Clean up naming inconsistencies across the codebase.
+
+## v1.0 Hardening Pass (Top-10 Fixes Applied)
+
+- Fixed `PaymentController` generic-type compile error blocking the whole build.
+- Closed comment-list IDOR: `GET /api/comments/issue/{id}` (and comment creation)
+  now require project membership; added MockMvc regression test.
+- Auth semantics: duplicate register -> 409 (`DuplicateResourceException`),
+  bad login -> 401 (`InvalidCredentialsException`); generic 500 handler no
+  longer echoes internal messages; `UserService.findByEmail` no longer echoes emails.
+- Atomicity: new transactional `AuthService.register` (user + FREE subscription);
+  new transactional `InvitationService.acceptInvitationForUser` (membership +
+  consume in one transaction); invitation/invite flows return 400/403 typed errors.
+- Domain enums: `IssueStatus` (TODO/IN_PROGRESS/DONE) + `IssuePriority`
+  (LOW/MEDIUM/HIGH) enforced at DTO (`@Pattern`), service (`from()`), and DB
+  (Flyway `V2__issue_constraints` CHECKs + `invitation.token`/`message.chat` indexes).
+- Removed destructive `cascade=ALL + orphanRemoval` on `User.assignedIssues`;
+  `GET /api/projects/search` is now paged.
+- Tests: 57 green (new `UserControllerTest`, reworked auth/invitation/comment
+  tests, `AuthServiceIntegrationTest` now exercises the real register path);
+  `qa_tests/test_auth.js` rewritten to the real cookie/401/409 contract.
+- Runnability: `backend/Dockerfile`, root `docker-compose.yml` (MySQL 8 +
+  API, Flyway on boot), `.github/workflows/ci.yml` (backend `mvn verify` +
+  frontend lint/build), `backend/.env.example` + `frontend/.env.example`.
+- Frontend: fixed `Page.content` unwrapping crashes on project/issue lists
+  (comments/chat rendered empty), mobile nav, reusable `ConfirmDialog`,
+  honest dashboard stats, honest upgrade copy, Zod enums matching backend,
+  `/invite/accept` page wired to the email link, `/api/users/me` profile
+  hydration (fixes always-`N/A` role), removed unused deps/files.
+- Docs: rewrote root + frontend READMEs to the actual implementation.
+
+## Follow-up Hardening Pass
+
+- Dead-code sweep: removed `IssueService.updateIssue` x2 (no endpoint),
+  `ProjectService.removeTeamMember`, `ChatService` (+ its unused injection),
+  `UserService.updateUserProjectSize`, `InvitationService.getTokenByUserEmail` /
+  `deleteToken`, `AuthResponse`, and dead `JwtConstant.JWT_SECRET/JWT_EXPIRATION`
+  (weak dev fallback no longer in source). Kept `CustomUserDetailsService` as
+  the standard Spring Security DAO extension point.
+- Deduped `MessageController` read endpoints (`/project/{id}` removed,
+  `/chat/{projectId}` kept — the one the UI calls); fixed the authz test path.
+- Unified error shape: `ApiErrorResponse` gained an optional `fields` map
+  (omitted when null), validation errors now carry a `message` too, and
+  `ProjectController` try/catch blocks were removed in favor of the global
+  handler (also fixes update/delete returning 404 on authorization failures).
+- Rate limiting: `RateLimitFilter` (20 req/min/IP sliding window on
+  `/api/auth/**`, 429 + standard error shape, in-memory single-instance,
+  X-Forwarded-For aware) wired before the JWT filter, with 4 unit tests.
+- Invitation emails are now `@Async` (`@EnableAsync`); failures stay logged,
+  invite requests no longer block on SMTP.
+- Frontend: server-side project search (debounced) + pager on project/issue
+  lists (`useDebounce`, `Pagination`), 404 page for authed wildcard routes,
+  "session expired" notice on 401 redirect, Recharts split into a lazy
+  `charts` chunk (vendor 908KB -> 545KB), Vitest + Testing Library setup
+  with 5 passing tests (form validation, confirm dialog, login flow).
+- Payments explicitly gated to test-mode links only in the README (no real
+  money; webhook tracked as future work).
+
+## Minimal Audit Log
+
+- New append-only `audit_log` table (Flyway `V3__audit_log`): actor, project,
+  entity type (`ISSUE` / `PROJECT_MEMBER`), entity id, action, nullable
+  before/after snapshots, timestamp; indexed by project + time.
+- `AuditService.log` runs inside the caller's transaction (failed operations
+  leave no phantom lines) and renders human-readable `summary` strings
+  ("Priya changed issue #42: TODO → IN_PROGRESS").
+- Recorded events: issue created / assigned (old → new assignee, with
+  "Unassigned" default) / status changed (old → new), member invited
+  (by whom, to whom), member joined.
+- Read endpoint `GET /api/projects/{id}/activity` (paged, member-only).
+- Tests: summary cases, recording wiring for all five events, endpoint
+  200/403; invite/accept tests extended with audit verifications.

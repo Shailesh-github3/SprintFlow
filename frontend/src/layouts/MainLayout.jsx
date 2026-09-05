@@ -1,9 +1,10 @@
 import React from 'react';
 import { Outlet, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, Home, Briefcase, CheckSquare, MessageSquare, Settings, CreditCard } from 'lucide-react';
+import { LogOut, Home, Briefcase, Settings, CreditCard, Menu } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 
 const MainLayout = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -44,7 +45,6 @@ const MainLayout = () => {
         <div className="mt-auto border-t p-4">
           <div className="flex items-center gap-3">
             <Avatar>
-              <AvatarImage src="" />
               <AvatarFallback>{user?.fullName?.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
             <div className="flex flex-col">
@@ -61,9 +61,32 @@ const MainLayout = () => {
 
       {/* Main Content */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center gap-4 border-b bg-card px-6 lg:h-[60px]">
+        <header className="flex h-14 items-center gap-4 border-b bg-card px-4 sm:px-6 lg:h-[60px]">
+          {/* Mobile nav */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Open navigation</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {navItems.map((item) => (
+                <DropdownMenuItem key={item.path} asChild>
+                  <Link to={item.path} className="flex items-center gap-2">
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem onClick={logout} className="text-destructive">
+                <LogOut className="h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="w-full flex-1">
-            {/* Search or other header actions can go here */}
+            <span className="text-sm font-semibold md:hidden">SprintFlow</span>
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-6">

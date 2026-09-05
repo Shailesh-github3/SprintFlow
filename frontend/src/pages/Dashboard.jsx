@@ -1,20 +1,13 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer 
-} from 'recharts';
-import { Briefcase, CheckSquare, Activity, AlertCircle } from 'lucide-react';
+import { Briefcase, Tag, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
+
+const CategoryChart = React.lazy(() => import('../components/CategoryChart'));
 
 const Dashboard = () => {
   const { isAuthenticated } = useAuth();
@@ -53,14 +46,9 @@ const Dashboard = () => {
     );
   }
 
-  // Calculate stats
+  // Calculate stats (all derived from the projects query — no placeholders)
   const projectList = Array.isArray(projects) ? projects : [];
   const totalProjects = projectList.length || 0;
-  
-  // TODO: The backend specification currently lacks an endpoint to fetch all issues assigned to a user across all projects.
-  // We need a /api/issues/assigned endpoint to accurately calculate total assigned issues and recent activity.
-  const totalIssues = 0; 
-  const recentActivityCount = 0; 
 
   // Process data for chart (Projects by Category)
   const categoryCount = projectList.reduce((acc, project) => {
@@ -68,6 +56,8 @@ const Dashboard = () => {
     acc[category] = (acc[category] || 0) + 1;
     return acc;
   }, {}) || {};
+
+  const totalCategories = Object.keys(categoryCount).length;
 
   const chartData = Object.keys(categoryCount).map(key => ({
     name: key,
@@ -82,7 +72,7 @@ const Dashboard = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
@@ -93,30 +83,16 @@ const Dashboard = () => {
             <p className="text-xs text-muted-foreground">Active projects in your workspace</p>
           </CardContent>
         </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Assigned Issues</CardTitle>
-            <CheckSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalIssues}</div>
-            <p className="text-xs text-muted-foreground">
-              {/* TODO: Connect to real issue endpoint when available */}
-              Pending backend endpoint
-            </p>
-          </CardContent>
-        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Categories</CardTitle>
+            <Tag className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{recentActivityCount}</div>
+            <div className="text-2xl font-bold">{totalCategories}</div>
             <p className="text-xs text-muted-foreground">
-              Actions in the last 7 days
+              Distinct project categories in use
             </p>
           </CardContent>
         </Card>
@@ -130,17 +106,9 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent className="pl-2">
             {chartData.length > 0 ? (
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
-                    <Tooltip cursor={{fill: 'var(--accent)'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="total" fill="currentColor" radius={[4, 4, 0, 0]} className="fill-primary" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <Suspense fallback={<Skeleton className="h-[300px] w-full rounded-xl" />}>
+                <CategoryChart data={chartData} />
+              </Suspense>
             ) : (
               <div className="flex h-[300px] items-center justify-center text-muted-foreground">
                 No project data available to display.

@@ -29,7 +29,7 @@ async function runTests() {
   let issueId = null;
 
   try {
-    const res = await axios.post(`${BASE_URL}/auth/register`, {
+    const res = await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Message User",
       email: email,
       password: "SecurePass123"

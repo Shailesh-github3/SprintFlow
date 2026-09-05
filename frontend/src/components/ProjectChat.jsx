@@ -16,12 +16,12 @@ const ProjectChat = ({ projectId }) => {
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef(null);
 
-  // Fetch Chat Messages
+  // Fetch Chat Messages (paged response: unwrap `content`)
   const { data: messages, isLoading, isError } = useQuery({
     queryKey: ['chat', projectId],
     queryFn: async () => {
       const response = await api.get(`/api/messages/chat/${projectId}`);
-      return response.data;
+      return response.data.content ?? response.data;
     },
     enabled: !!projectId,
     // Poll every 5 seconds for new messages since we don't have WebSockets in this prototype

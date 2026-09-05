@@ -21,15 +21,9 @@ public class UserService {
     public User findByEmail(String email) {
         User user = userRepository.findByEmail(email);
         if (user == null) {
-            throw new BadCredentialsException("User not found with email: " + email);
+            throw new BadCredentialsException("User not found");
         }
         return user;
-    }
-
-    @Transactional
-    public User updateUserProjectSize(User user, int newProjectSize) {
-        user.setProjectSize(user.getProjectSize() + newProjectSize);
-        return userRepository.save(user);
     }
 
     @Transactional(readOnly = true)

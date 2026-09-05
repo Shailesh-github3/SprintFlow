@@ -6,4 +6,6 @@ import com.sprintflow.dto.MessageDTO;
 @Mapper(componentModel = "spring", uses = {UserMapper.class})
 public interface MessageMapper {
     MessageDTO toDto(Message message);
+
+    Message toEntity(MessageDTO messageDTO);
 }

@@ -4,6 +4,7 @@ package com.sprintflow.config;
 import java.util.List;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -20,14 +21,17 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
+@EnableAsync
 @EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
 public class AppConfig {
 
     private final JwtTokenValidator jwtTokenValidator;
+    private final RateLimitFilter rateLimitFilter;
     private final CorsProperties corsProperties;
 
-    public AppConfig(JwtTokenValidator jwtTokenValidator, CorsProperties corsProperties) {
+    public AppConfig(JwtTokenValidator jwtTokenValidator, RateLimitFilter rateLimitFilter, CorsProperties corsProperties) {
         this.jwtTokenValidator = jwtTokenValidator;
+        this.rateLimitFilter = rateLimitFilter;
         this.corsProperties = corsProperties;
     }
 
@@ -42,6 +46,7 @@ public class AppConfig {
                 .anyRequest().permitAll()
             )
             .addFilterBefore(jwtTokenValidator, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(rateLimitFilter, JwtTokenValidator.class)
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource((corsConfigurationSource())));
 

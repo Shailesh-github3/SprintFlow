@@ -6,4 +6,6 @@ import com.sprintflow.dto.SubscriptionDTO;
 @Mapper(componentModel = "spring")
 public interface SubscriptionMapper {
     SubscriptionDTO toDto(Subscription subscription);
+
+    Subscription toEntity(SubscriptionDTO subscriptionDTO);
 }

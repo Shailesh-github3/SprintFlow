@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -18,7 +18,14 @@ const loginSchema = z.object({
 const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, refreshProfile } = useAuth();
+
+  useEffect(() => {
+    if (sessionStorage.getItem('session-expired')) {
+      sessionStorage.removeItem('session-expired');
+      toast.info('Your session expired. Please log in again.');
+    }
+  }, []);
 
   const {
     register,
@@ -32,9 +39,11 @@ const Login = () => {
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      const userData = { email: data.email }; 
       await api.post('/api/auth/login', data);
-      login(userData);
+      const profile = await refreshProfile();
+      if (!profile) {
+        login({ email: data.email });
+      }
       toast.success('Logged in successfully');
       navigate('/');
     } catch (error) {

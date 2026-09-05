@@ -6,4 +6,6 @@ import com.sprintflow.dto.ProjectDTO;
 @Mapper(componentModel = "spring", uses = {UserMapper.class, ChatMapper.class})
 public interface ProjectMapper {
     ProjectDTO toDto(Project project);
+
+    Project toEntity(ProjectDTO projectDTO);
 }

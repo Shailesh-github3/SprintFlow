@@ -26,7 +26,7 @@ async function runTests() {
   let token = "";
   
   try {
-    const res = await axios.post(`${BASE_URL}/auth/register`, {
+    const res = await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Sub User",
       email: email,
       password: "SecurePass123"

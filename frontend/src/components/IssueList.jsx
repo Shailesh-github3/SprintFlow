@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Calendar, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../services/api';
 import { Button } from './ui/button';
@@ -10,28 +10,40 @@ import { Skeleton } from './ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import IssueForm from './IssueForm';
 import IssueDetailsDialog from './IssueDetailsDialog';
+import ConfirmDialog from './ConfirmDialog';
+import Pagination from './Pagination';
+
+const PAGE_SIZE = 12;
 
 const IssueList = ({ projectId }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [page, setPage] = useState(0);
   const queryClient = useQueryClient();
 
-  // Fetch Issues
-  const { data: issues, isLoading, isError } = useQuery({
-    queryKey: ['issues', projectId],
+  // Fetch Issues (paged response: unwrap `content`)
+  const { data: issuePage, isLoading, isError } = useQuery({
+    queryKey: ['issues', projectId, page],
     queryFn: async () => {
-      const response = await api.get(`/api/issues/project/${projectId}`);
+      const response = await api.get(`/api/issues/project/${projectId}`, { params: { page, size: PAGE_SIZE } });
       return response.data;
     },
     enabled: !!projectId,
+    placeholderData: (previous) => previous,
   });
+
+  const issues = issuePage?.content ?? [];
+  const totalPages = issuePage?.totalPages ?? 0;
+  const currentPage = issuePage?.number ?? 0;
 
   // Create Issue Mutation
   const createMutation = useMutation({
     mutationFn: (newIssue) => api.post('/api/issues', { ...newIssue, projectId: Number(projectId) }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['issues', projectId]);
+      queryClient.invalidateQueries({ queryKey: ['issues', projectId] });
       setIsCreateOpen(false);
+      setPage(0);
       toast.success('Issue created successfully');
     },
     onError: (error) => {
@@ -43,7 +55,7 @@ const IssueList = ({ projectId }) => {
   const statusMutation = useMutation({
     mutationFn: ({ issueId, status }) => api.put(`/api/issues/${issueId}/status/${status}`),
     onSuccess: () => {
-      queryClient.invalidateQueries(['issues', projectId]);
+      queryClient.invalidateQueries({ queryKey: ['issues', projectId] });
       toast.success('Status updated');
     },
     onError: (error) => {
@@ -55,7 +67,8 @@ const IssueList = ({ projectId }) => {
   const deleteMutation = useMutation({
     mutationFn: (issueId) => api.delete(`/api/issues/${issueId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries(['issues', projectId]);
+      queryClient.invalidateQueries({ queryKey: ['issues', projectId] });
+      setDeleteTarget(null);
       toast.success('Issue deleted successfully');
     },
     onError: (error) => {
@@ -72,9 +85,7 @@ const IssueList = ({ projectId }) => {
   };
 
   const handleDelete = (issueId) => {
-    if (window.confirm('Are you sure you want to delete this issue?')) {
-      deleteMutation.mutate(issueId);
-    }
+    setDeleteTarget(issueId);
   };
 
   const getPriorityColor = (priority) => {
@@ -204,6 +215,19 @@ const IssueList = ({ projectId }) => {
         issueId={selectedIssueId} 
         open={!!selectedIssueId} 
         setOpen={(open) => !open && setSelectedIssueId(null)} 
+      />
+
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        setOpen={(open) => !open && setDeleteTarget(null)}
+        title="Delete issue?"
+        description="This will permanently delete the issue and all its comments."
+        confirmLabel="Delete issue"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
       />
     </div>
   );

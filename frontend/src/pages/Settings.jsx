@@ -26,10 +26,10 @@ const Settings = () => {
 
   const fullName = user?.fullName || 'N/A';
   const email = user?.email || 'N/A';
-  const role = user?.role || 'N/A';
+  const role = user?.roles?.[0] || 'USER';
 
   const currentPlan = subscription?.planType || 'FREE';
-  const planStatus = subscription?.status || 'Active';
+  const planStatus = subscription ? (subscription.valid === false ? 'Expired' : 'Active') : 'Active';
   const expiryDate = subscription?.endDate
     ? new Date(subscription.endDate).toLocaleDateString()
     : 'N/A';
@@ -92,6 +92,10 @@ const Settings = () => {
               <Skeleton className="h-4 w-1/4" />
               <Skeleton className="h-4 w-1/2" />
             </div>
+          ) : subError ? (
+            <p className="text-sm text-destructive">
+              Could not load your subscription. Please try again later.
+            </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">

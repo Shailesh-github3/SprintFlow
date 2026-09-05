@@ -91,3 +91,6 @@ coverage/
 
 *.swp
 *.swo
+
+backend_all.txt
+cookiejar*.txt

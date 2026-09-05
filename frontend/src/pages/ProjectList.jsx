@@ -12,32 +12,50 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import ProjectForm from '../components/ProjectForm';
+import ConfirmDialog from '../components/ConfirmDialog';
+import Pagination from '../components/Pagination';
+import { useDebounce } from '../hooks/useDebounce';
+
+const PAGE_SIZE = 12;
 
 const ProjectList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const queryClient = useQueryClient();
+  const debouncedSearch = useDebounce(searchTerm.trim());
 
   const { isAuthenticated } = useAuth();
 
-  // Fetch Projects
-  const { data: projects, isLoading, isError } = useQuery({
-    queryKey: ['projects'],
+  // Server-side search (debounced) + pagination. The backend returns a
+  // Spring `Page`; `content` holds the current slice.
+  const { data: projectPage, isLoading, isError } = useQuery({
+    queryKey: ['projects', page, debouncedSearch],
     queryFn: async () => {
-      const response = await api.get('/api/projects');
+      const params = { page, size: PAGE_SIZE };
+      const url = debouncedSearch ? '/api/projects/search' : '/api/projects';
+      if (debouncedSearch) params.name = debouncedSearch;
+      const response = await api.get(url, { params });
       return response.data;
     },
     enabled: isAuthenticated,
+    placeholderData: (previous) => previous,
   });
+
+  const projects = projectPage?.content ?? [];
+  const totalPages = projectPage?.totalPages ?? 0;
+  const currentPage = projectPage?.number ?? 0;
 
   // Create Project Mutation
   const createMutation = useMutation({
     mutationFn: (newProject) => api.post('/api/projects', newProject),
     onSuccess: () => {
-      queryClient.invalidateQueries(['projects']);
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       setIsCreateOpen(false);
+      setPage(0);
       toast.success('Project created successfully');
     },
     onError: (error) => {
@@ -49,7 +67,7 @@ const ProjectList = () => {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => api.put(`/api/projects/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['projects']);
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       setEditingProject(null);
       toast.success('Project updated successfully');
     },
@@ -62,19 +80,14 @@ const ProjectList = () => {
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/api/projects/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries(['projects']);
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setDeleteTarget(null);
       toast.success('Project deleted successfully');
     },
     onError: (error) => {
       toast.error(error.response?.data?.message || 'Failed to delete project');
     }
   });
-
-  // Filter projects by search term
-  const filteredProjects = projects?.filter(p => 
-    p.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.category?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
 
   const handleCreateSubmit = (data) => {
     createMutation.mutate(data);
@@ -85,9 +98,7 @@ const ProjectList = () => {
   };
 
   const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      deleteMutation.mutate(id);
-    }
+    setDeleteTarget(id);
   };
 
   const openEditDialog = (project) => {
@@ -117,7 +128,7 @@ const ProjectList = () => {
             placeholder="Search projects..." 
             className="pl-8" 
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
           />
         </div>
       </div>
@@ -136,13 +147,13 @@ const ProjectList = () => {
         <div className="text-center text-destructive p-8 border rounded-lg border-dashed">
           Failed to load projects.
         </div>
-      ) : filteredProjects.length === 0 ? (
+      ) : projects.length === 0 ? (
         <div className="text-center text-muted-foreground p-12 border rounded-lg border-dashed">
-          No projects found. Create one to get started.
+          {debouncedSearch ? `No projects match "${debouncedSearch}".` : 'No projects found. Create one to get started.'}
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredProjects.map((project) => (
+          {projects.map((project) => (
             <Card key={project.projectId} className="flex flex-col transition-all hover:shadow-md">
               <CardHeader className="flex flex-row items-start justify-between pb-2">
                 <div className="space-y-1 pr-4">
@@ -191,6 +202,8 @@ const ProjectList = () => {
         </div>
       )}
 
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
+
       {/* Create Dialog */}
       <ProjectForm 
         open={isCreateOpen} 
@@ -206,6 +219,17 @@ const ProjectList = () => {
         defaultValues={editingProject} 
         onSubmit={handleUpdateSubmit} 
         isLoading={updateMutation.isPending} 
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        setOpen={(open) => !open && setDeleteTarget(null)}
+        title="Delete project?"
+        description="This will permanently delete the project and all its issues, comments, and chat history."
+        confirmLabel="Delete project"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
       />
     </div>
   );

@@ -19,7 +19,7 @@ const registerSchema = z.object({
 const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, refreshProfile } = useAuth();
 
   const {
     register,
@@ -33,9 +33,11 @@ const Register = () => {
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      const userData = { email: data.email, fullName: data.fullName }; 
       await api.post('/api/auth/register', data);
-      login(userData);
+      const profile = await refreshProfile();
+      if (!profile) {
+        login({ email: data.email, fullName: data.fullName });
+      }
       toast.success('Registration successful');
       navigate('/');
     } catch (error) {

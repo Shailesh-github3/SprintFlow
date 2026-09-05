@@ -62,7 +62,7 @@ class IssueControllerAuthorizationTest {
         IssueRequest request = new IssueRequest();
         request.setTitle("Bug Fix");
         request.setDescription("Fix the bug");
-        request.setStatus("OPEN");
+        request.setStatus("TODO");
         request.setProjectId(1L);
         request.setPriority("HIGH");
         request.setDueDate(LocalDate.now().plusDays(7));
@@ -91,5 +91,39 @@ class IssueControllerAuthorizationTest {
         mockMvc.perform(get("/api/issues/project/1"))
                 .andExpect(status().isForbidden());
     }
+
+        @Test
+        @WithMockUser(username = "alice@example.com", roles = "USER")
+        void createIssue_shouldReturn400_whenTitleIsBlank() throws Exception {
+                IssueRequest request = new IssueRequest();
+                request.setTitle("");
+                request.setDescription("Fix the bug");
+                request.setStatus("TODO");
+                request.setProjectId(1L);
+                request.setPriority("HIGH");
+                request.setDueDate(LocalDate.now().plusDays(7));
+
+                mockMvc.perform(post("/api/issues")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(username = "alice@example.com", roles = "USER")
+        void createIssue_shouldReturn400_whenStatusIsInvalid() throws Exception {
+                IssueRequest request = new IssueRequest();
+                request.setTitle("Bug Fix");
+                request.setDescription("Fix the bug");
+                request.setStatus("OPEN");
+                request.setProjectId(1L);
+                request.setPriority("HIGH");
+                request.setDueDate(LocalDate.now().plusDays(7));
+
+                mockMvc.perform(post("/api/issues")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(objectMapper.writeValueAsString(request)))
+                                .andExpect(status().isBadRequest());
+        }
 
 }

@@ -4,10 +4,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 
+import com.sprintflow.entity.AuditAction;
+import com.sprintflow.entity.AuditEntityType;
 import com.sprintflow.entity.Invitation;
 import com.sprintflow.repository.InvitationRepository;
 
@@ -16,16 +19,20 @@ public class InvitationService {
 
     private final InvitationRepository invitationRepository;
     private final EmailService emailService;
+    private final ProjectService projectService;
+    private final AuditService auditService;
     private final String frontendUrl;
 
-    public InvitationService(InvitationRepository invitationRepository, EmailService emailService, @Value("${sprintflow.frontend.url}") String frontendUrl) {
+    public InvitationService(InvitationRepository invitationRepository, EmailService emailService, @Lazy ProjectService projectService, AuditService auditService, @Value("${sprintflow.frontend.url}") String frontendUrl) {
         this.invitationRepository = invitationRepository;
         this.emailService = emailService;
+        this.projectService = projectService;
+        this.auditService = auditService;
         this.frontendUrl = frontendUrl;
     }
 
     @Transactional
-    public void sendInvitation(String userEmail, long projectId) {
+    public void sendInvitation(String userEmail, long projectId, String invitedByEmail, Long invitedUserId) {
         Invitation existing = invitationRepository.findByUserEmail(userEmail);
         if (existing != null && existing.getProjectId().equals(projectId)) {
             invitationRepository.delete(existing);
@@ -41,7 +48,10 @@ public class InvitationService {
         invitation.setUsed(false);
         invitationRepository.save(invitation);
 
-        String invitationLink = frontendUrl + "/invitations/accept_invitation?token=" + invitationToken;
+        auditService.log(invitedByEmail, projectId, AuditEntityType.PROJECT_MEMBER,
+                invitedUserId, AuditAction.INVITED, null, userEmail);
+
+        String invitationLink = frontendUrl + "/invite/accept?token=" + invitationToken;
         emailService.sendEmailWithToken(userEmail, invitationLink);
     }
 
@@ -49,35 +59,46 @@ public class InvitationService {
     public Invitation acceptInvitation(String token) throws Exception {
         Invitation invitation = invitationRepository.findByToken(token);
         if (invitation == null) {
-            throw new Exception("Invalid invitation token");
+            throw new IllegalArgumentException("Invalid invitation token");
         }
         if (invitation.isUsed()) {
-            throw new Exception("Invitation has already been used");
+            throw new IllegalArgumentException("Invitation has already been used");
         }
         if (invitation.getExpiryDate() != null && invitation.getExpiryDate().isBefore(LocalDateTime.now())) {
             invitationRepository.delete(invitation);
-            throw new Exception("Invitation has expired");
+            throw new IllegalArgumentException("Invitation has expired");
         }
         invitation.setUsed(true);
         invitationRepository.save(invitation);
         return invitation;
     }
 
-    @Transactional(readOnly = true)
-    public String getTokenByUserEmail(String userEmail){
-        Invitation invitation = invitationRepository.findByUserEmail(userEmail);
-        if (invitation != null) {
-            return invitation.getToken();
-        }
-        throw new RuntimeException("No invitation found for the provided email: " + userEmail);
-    }
-
+    /**
+     * Validates the invitation, checks the recipient, adds the user to the project
+     * and marks the invitation used — all in a single transaction. If adding the
+     * team member fails, the invitation stays unconsumed.
+     */
     @Transactional
-    public void deleteToken(String token) {
+    public Invitation acceptInvitationForUser(String token, String currentUserEmail, Long currentUserId) throws Exception {
         Invitation invitation = invitationRepository.findByToken(token);
-        if (invitation != null) {
-            invitationRepository.deleteById(invitation.getId());
+        if (invitation == null) {
+            throw new IllegalArgumentException("Invalid invitation token");
         }
+        if (!invitation.getUserEmail().equals(currentUserEmail)) {
+            throw new SecurityException("This invitation was not sent to you");
+        }
+        if (invitation.isUsed()) {
+            throw new IllegalArgumentException("Invitation has already been used");
+        }
+        if (invitation.getExpiryDate() != null && invitation.getExpiryDate().isBefore(LocalDateTime.now())) {
+            invitationRepository.delete(invitation);
+            throw new IllegalArgumentException("Invitation has expired");
+        }
+        projectService.addTeamMember(invitation.getProjectId(), currentUserId);
+        invitation.setUsed(true);
+        invitationRepository.save(invitation);
+        auditService.log(currentUserEmail, invitation.getProjectId(), AuditEntityType.PROJECT_MEMBER,
+                currentUserId, AuditAction.JOINED, null, null);
+        return invitation;
     }
-
 }

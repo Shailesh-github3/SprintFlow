@@ -16,8 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sprintflow.entity.Comment;
+import com.sprintflow.entity.Issue;
 import com.sprintflow.request.CreateCommentRequest;
 import com.sprintflow.service.CommentService;
+import com.sprintflow.service.IssueService;
 import com.sprintflow.service.ProjectService;
 
 import jakarta.validation.Valid;
@@ -28,11 +30,13 @@ import com.sprintflow.mapper.CommentMapper;
 public class CommentController {
 
     private final CommentService commentService;
+    private final IssueService issueService;
     private final ProjectService projectService;
     private final CommentMapper commentMapper;
 
-    public CommentController(CommentService commentService, ProjectService projectService, CommentMapper commentMapper) {
+    public CommentController(CommentService commentService, IssueService issueService, ProjectService projectService, CommentMapper commentMapper) {
         this.commentService = commentService;
+        this.issueService = issueService;
         this.projectService = projectService;
         this.commentMapper = commentMapper;
     }
@@ -41,6 +45,8 @@ public class CommentController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> createComment(@Valid @RequestBody CreateCommentRequest commentRequest) throws Exception {
         String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        Issue issue = issueService.getIssueById(commentRequest.getIssueId());
+        projectService.ensureProjectMemberOrOwner(issue.getProject().getProjectId(), currentUserEmail);
         Comment createdComment = commentService.createComment(commentRequest.getIssueId(), currentUserEmail, commentRequest.getContent());
         return ResponseEntity.status(201).body(commentMapper.toDto(createdComment));
     }
@@ -57,6 +63,9 @@ public class CommentController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getCommentsByIssueId(@PathVariable Long issueId,
                                                    @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        Issue issue = issueService.getIssueById(issueId);
+        projectService.ensureProjectMemberOrOwner(issue.getProject().getProjectId(), currentUserEmail);
         Page<Comment> commentPage = commentService.findCommentsByIssueId(issueId, pageable);
         return ResponseEntity.ok(commentPage.map(commentMapper::toDto));
     }

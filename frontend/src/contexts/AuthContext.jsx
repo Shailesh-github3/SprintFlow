@@ -35,6 +35,32 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
   };
 
+  // Hydrates the full profile (fullName, roles) from the backend.
+  // Used after login/register and on app start when a session exists.
+  const refreshProfile = async () => {
+    try {
+      const res = await api.get('/api/users/me');
+      const profile = {
+        email: res.data.email,
+        fullName: res.data.fullName,
+        roles: res.data.roles,
+      };
+      localStorage.setItem('user', JSON.stringify(profile));
+      setUser(profile);
+      setIsAuthenticated(true);
+      return profile;
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (localStorage.getItem('user')) {
+      refreshProfile();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const queryClient = useQueryClient();
 
   const logout = async () => {
@@ -50,7 +76,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

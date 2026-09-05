@@ -50,16 +50,6 @@ public class MessageController {
         return ResponseEntity.status(201).body(messageMapper.toDto(message));
     }
 
-    @GetMapping("/project/{projectId}")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getMessagesByProjectId(@PathVariable Long projectId,
-                                                     @PageableDefault(size = 50, sort = "createdAt", direction = Sort.Direction.ASC) Pageable pageable) throws Exception {
-        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-        projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
-        Page<Message> messagePage = messageService.getMessagesByProjectId(projectId, pageable);
-        return ResponseEntity.ok(messagePage.map(messageMapper::toDto));
-    }
-
     @GetMapping("/chat/{projectId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getMessagesByChatId(@PathVariable Long projectId,

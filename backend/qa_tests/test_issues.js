@@ -27,7 +27,7 @@ async function runTests() {
   let projectId = null;
 
   try {
-    const res = await axios.post(`${BASE_URL}/auth/register`, {
+    const res = await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Issue User",
       email: email,
       password: "SecurePass123"

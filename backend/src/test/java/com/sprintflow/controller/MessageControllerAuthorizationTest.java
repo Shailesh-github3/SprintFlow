@@ -91,13 +91,13 @@ class MessageControllerAuthorizationTest {
 
     @Test
     @WithMockUser(username = "alice@example.com", roles = "USER")
-    void getMessagesByProjectId_shouldReturn403_whenAuthorizationFails() throws Exception {
+    void getMessagesByChatId_shouldReturn403_whenAuthorizationFails() throws Exception {
 
         doThrow(new SecurityException("User is not authorized for this project"))
                 .when(projectService)
                 .ensureProjectMemberOrOwner(anyLong(), anyString());
 
-        mockMvc.perform(get("/api/messages/project/1"))
+        mockMvc.perform(get("/api/messages/chat/1"))
                 .andExpect(status().isForbidden());
     }
 

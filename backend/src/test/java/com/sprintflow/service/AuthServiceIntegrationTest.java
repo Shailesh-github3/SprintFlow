@@ -3,11 +3,13 @@ package com.sprintflow.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sprintflow.entity.PlanType;
 import com.sprintflow.entity.Subscription;
 import com.sprintflow.entity.User;
+import com.sprintflow.exception.DuplicateResourceException;
 import com.sprintflow.repository.SubscriptionRepository;
 import com.sprintflow.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -66,23 +68,18 @@ class AuthServiceIntegrationTest {
     private SubscriptionService subscriptionService;
 
     @Autowired
+    private AuthService authService;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Test
     @DisplayName("registerUser creates a User and a FREE subscription, password is BCrypt hashed")
     void registerUser_CreatesUserAndFreeSubscription_Success() {
-        // Arrange: simulate what AuthController.registerUserHandler does
+        // Arrange + Act: exercise the real transactional register path
         String rawPassword = "securePassword123";
-
-        User newUser = new User();
-        newUser.setFullName("Test User");
-        newUser.setEmail("integrationtest@example.com");
-        newUser.setPassword(passwordEncoder.encode(rawPassword));
-        newUser.setRoles(List.of("USER"));
-
-        // Act: save user and create subscription (mirrors AuthController flow)
-        User savedUser = userRepository.save(newUser);
-        Subscription subscription = subscriptionService.createSubscription(savedUser);
+        User savedUser = authService.register("Test User", "integrationtest@example.com", rawPassword);
+        Subscription subscription = subscriptionRepository.findByUser_UserId(savedUser.getUserId());
 
         // Assert: User is persisted
         assertNotNull(savedUser.getUserId(), "Saved user should have a generated ID");
@@ -116,5 +113,14 @@ class AuthServiceIntegrationTest {
         Subscription subFromDb = subscriptionRepository.findByUser_UserId(savedUser.getUserId());
         assertNotNull(subFromDb, "Subscription must be retrievable from database by user ID");
         assertEquals(PlanType.FREE, subFromDb.getPlanType());
+    }
+
+    @Test
+    @DisplayName("registerUser rejects a duplicate email without creating a second user")
+    void registerUser_DuplicateEmail_ThrowsConflict() {
+        authService.register("First User", "duplicate@example.com", "securePassword123");
+
+        assertThrows(DuplicateResourceException.class,
+                () -> authService.register("Second User", "duplicate@example.com", "anotherPassword123"));
     }
 }

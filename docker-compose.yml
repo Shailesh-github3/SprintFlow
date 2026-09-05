@@ -1,0 +1,40 @@
+# Local run: `docker compose up --build`
+# Starts MySQL 8.0 (Flyway migrates the schema on boot) + the Spring Boot API.
+# Frontend runs separately: `cd frontend && npm install && npm run dev`
+# (VITE_API_URL=http://localhost:8080, see frontend/.env.example).
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: sprintflow
+      MYSQL_USER: sprintflow
+      MYSQL_PASSWORD: sprintflow
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/sprintflow
+      SPRING_DATASOURCE_USERNAME: sprintflow
+      SPRING_DATASOURCE_PASSWORD: sprintflow
+      # Dev-only secret. Override with a real 32+ byte value in any shared env.
+      SPRINGFLOW_JWT_SECRET: dev-only-compose-secret-change-me-0123456789abcdef
+      SPRINGFLOW_CORS_ALLOWED_ORIGINS: http://localhost:5173
+      SPRINGFLOW_FRONTEND_URL: http://localhost:5173
+
+volumes:
+  mysql-data:

@@ -2,21 +2,31 @@ const axios = require('axios');
 
 const BASE_URL = 'http://localhost:8080';
 
+// Manual QA harness for the auth contract (mirrors the MockMvc coverage in
+// AuthControllerSecurityTest). Requires a running backend + MySQL.
+// Auth uses an HttpOnly `sprintflow_jwt` cookie, so success is asserted via
+// status code + Set-Cookie header, not a response body.
+
 async function runTests() {
   let passed = 0, failed = 0;
-  
+
   const assert = (condition, msg, actual, expected) => {
     if (!condition) {
-      console.error(`❌ FAILED: ${msg}`);
+      console.error(`FAILED: ${msg}`);
       if (actual !== undefined || expected !== undefined) {
         console.error(`   Expected: ${JSON.stringify(expected)}`);
         console.error(`   Actual:   ${JSON.stringify(actual)}`);
       }
       failed++;
     } else {
-      console.log(`✅ PASSED: ${msg}`);
+      console.log(`PASSED: ${msg}`);
       passed++;
     }
+  };
+
+  const hasJwtCookie = (res) => {
+    const cookies = res.headers['set-cookie'] || [];
+    return cookies.some((c) => c.startsWith('sprintflow_jwt='));
   };
 
   console.log("--- Running Auth Tests ---");
@@ -24,21 +34,20 @@ async function runTests() {
   // 1. Register New User
   let email = `testuser_${Date.now()}@example.com`;
   try {
-    const res = await axios.post(`${BASE_URL}/auth/register`, {
+    const res = await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Test User",
       email: email,
       password: "SecurePass123"
     });
     assert(res.status === 201, `Status code is 201`, res.status, 201);
-    assert(res.data.jwt && typeof res.data.jwt === 'string', "Response has JWT token");
-    assert(res.data.message === "User created successfully", "Response has success message", res.data.message, "User created successfully");
+    assert(hasJwtCookie(res), "Response sets the sprintflow_jwt cookie");
   } catch (error) {
     assert(false, `Valid registration failed: ${error.message} - ${JSON.stringify(error.response?.data)}`);
   }
 
-  // Duplicate email
+  // Duplicate email -> 409 Conflict (no user enumeration beyond "already exists")
   try {
-    const res = await axios.post(`${BASE_URL}/auth/register`, {
+    await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Test User 2",
       email: email,
       password: "DifferentPass456"
@@ -46,15 +55,15 @@ async function runTests() {
     assert(false, "Duplicate email should have failed");
   } catch (error) {
     const data = error.response?.data || {};
-    assert(error.response?.status === 500, `Duplicate email status 500`, error.response?.status, 500);
-    assert(data.error === "Internal Server Error", "Duplicate email error string", data.error, "Internal Server Error");
-    assert(data.message === `User with email ${email} already exists.`, "Duplicate email error message", data.message, `User with email ${email} already exists.`);
-    assert(data.path === "/auth/register", "Duplicate email path", data.path, "/auth/register");
+    assert(error.response?.status === 409, `Duplicate email status 409`, error.response?.status, 409);
+    assert(data.error === "Conflict", "Duplicate email error string", data.error, "Conflict");
+    assert(data.message === "An account with this email already exists.", "Duplicate email error message", data.message, "An account with this email already exists.");
+    assert(data.path === "/api/auth/register", "Duplicate email path", data.path, "/api/auth/register");
   }
 
   // Invalid email format
   try {
-    await axios.post(`${BASE_URL}/auth/register`, {
+    await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Test User",
       email: "invalid-email",
       password: "Password123"
@@ -64,13 +73,13 @@ async function runTests() {
     const data = error.response?.data || {};
     assert(error.response?.status === 400, "Invalid email status 400", error.response?.status, 400);
     assert(data.error === "Validation failed", "Invalid email error string", data.error, "Validation failed");
-    assert(data.path === "/auth/register", "Invalid email path", data.path, "/auth/register");
+    assert(data.path === "/api/auth/register", "Invalid email path", data.path, "/api/auth/register");
     assert(data.fields?.email === "Email must be valid", "Invalid email field message", data.fields?.email, "Email must be valid");
   }
 
   // Password too short
   try {
-    await axios.post(`${BASE_URL}/auth/register`, {
+    await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "Test User",
       email: `test2_${Date.now()}@example.com`,
       password: "short"
@@ -81,10 +90,10 @@ async function runTests() {
     assert(error.response?.status === 400, "Short password status 400", error.response?.status, 400);
     assert(data.fields?.password === "Password must be at least 8 characters long", "Short password field message", data.fields?.password, "Password must be at least 8 characters long");
   }
-  
+
   // Missing Required Fields
   try {
-    await axios.post(`${BASE_URL}/auth/register`, {
+    await axios.post(`${BASE_URL}/api/auth/register`, {
       fullName: "",
       email: `test3_${Date.now()}@example.com`,
       password: ""
@@ -99,34 +108,34 @@ async function runTests() {
 
   // Login Tests
   try {
-    const res = await axios.post(`${BASE_URL}/auth/login`, {
+    const res = await axios.post(`${BASE_URL}/api/auth/login`, {
       email: email,
       password: "SecurePass123"
     });
     assert(res.status === 200, "Login successful status 200", res.status, 200);
-    assert(res.data.jwt && typeof res.data.jwt === 'string', "Login returns JWT");
-    assert(res.data.message === "Login successful", "Login success message", res.data.message, "Login successful");
+    assert(hasJwtCookie(res), "Login sets the sprintflow_jwt cookie");
   } catch (error) {
     assert(false, `Valid login failed: ${error.message} - ${JSON.stringify(error.response?.data)}`);
   }
 
-  // Login - Wrong Password
+  // Login - Wrong Password -> 401 (generic message, no user enumeration)
   try {
-    await axios.post(`${BASE_URL}/auth/login`, {
+    await axios.post(`${BASE_URL}/api/auth/login`, {
       email: email,
       password: "WrongPassword999"
     });
     assert(false, "Wrong password should have failed");
   } catch (error) {
     const data = error.response?.data || {};
-    assert(error.response?.status === 500, "Wrong password status 500", error.response?.status, 500);
+    assert(error.response?.status === 401, "Wrong password status 401", error.response?.status, 401);
+    assert(data.error === "Unauthorized", "Wrong password error string", data.error, "Unauthorized");
     assert(data.message === "Invalid email or password.", "Wrong password message", data.message, "Invalid email or password.");
-    assert(data.path === "/auth/login", "Wrong password path", data.path, "/auth/login");
+    assert(data.path === "/api/auth/login", "Wrong password path", data.path, "/api/auth/login");
   }
 
   // Login - Invalid Email Format
   try {
-    await axios.post(`${BASE_URL}/auth/login`, {
+    await axios.post(`${BASE_URL}/api/auth/login`, {
       email: "not-an-email",
       password: "Password123"
     });
@@ -135,7 +144,7 @@ async function runTests() {
     const data = error.response?.data || {};
     assert(error.response?.status === 400, "Login invalid email status 400", error.response?.status, 400);
     assert(data.error === "Validation failed", "Login invalid email error string", data.error, "Validation failed");
-    assert(data.path === "/auth/login", "Login invalid email path", data.path, "/auth/login");
+    assert(data.path === "/api/auth/login", "Login invalid email path", data.path, "/api/auth/login");
     assert(data.fields?.email === "Email must be valid", "Login invalid email field message", data.fields?.email, "Email must be valid");
   }
 

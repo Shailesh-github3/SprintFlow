@@ -8,6 +8,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.sprintflow.entity.Issue;
+import com.sprintflow.entity.AuditAction;
+import com.sprintflow.entity.AuditEntityType;
+import com.sprintflow.entity.IssuePriority;
+import com.sprintflow.entity.IssueStatus;
 import com.sprintflow.repository.IssueRepository;
 import com.sprintflow.request.IssueRequest;
 import com.sprintflow.entity.Project;
@@ -19,11 +23,13 @@ public class IssueService {
     private final IssueRepository issueRepository;
     private final ProjectService projectService;
     private final UserService userService;
+    private final AuditService auditService;
 
-    public IssueService(IssueRepository issueRepository, ProjectService projectService, UserService userService) {
+    public IssueService(IssueRepository issueRepository, ProjectService projectService, UserService userService, AuditService auditService) {
         this.issueRepository = issueRepository;
         this.projectService = projectService;
         this.userService = userService;
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -32,8 +38,8 @@ public class IssueService {
         Issue newIssue = new Issue();
         newIssue.setIssueTitle(issue.getTitle());
         newIssue.setIssueDescription(issue.getDescription());
-        newIssue.setIssueStatus(issue.getStatus());
-        newIssue.setPriority(issue.getPriority());
+        newIssue.setIssueStatus(IssueStatus.from(issue.getStatus()).name());
+        newIssue.setPriority(IssuePriority.from(issue.getPriority()).name());
         newIssue.setDueDate(issue.getDueDate());
         newIssue.setProject(project);
         return issueRepository.save(newIssue);
@@ -42,7 +48,10 @@ public class IssueService {
     @Transactional
     public Issue createIssue(IssueRequest issue, String actorEmail) throws Exception {
         projectService.ensureProjectMemberOrOwner(issue.getProjectId(), actorEmail);
-        return createIssue(issue);
+        Issue created = createIssue(issue);
+        auditService.log(actorEmail, issue.getProjectId(), AuditEntityType.ISSUE,
+                created.getIssueId(), AuditAction.CREATED, null, null);
+        return created;
     }
 
     @Transactional(readOnly = true)
@@ -89,31 +98,17 @@ public class IssueService {
     public Issue addUserToIssue(Long issueId, Long userId, String actorEmail) throws Exception {
         Issue issue = getIssueById(issueId);
         projectService.ensureProjectOwner(issue.getProject().getProjectId(), actorEmail);
-        return addUserToIssue(issueId, userId);
-    }
-
-    @Transactional
-    public Issue updateIssue(Long issueId, IssueRequest issueRequest) throws Exception {
-        Issue existingIssue = getIssueById(issueId);
-        existingIssue.setIssueTitle(issueRequest.getTitle());
-        existingIssue.setIssueDescription(issueRequest.getDescription());
-        existingIssue.setIssueStatus(issueRequest.getStatus());
-        existingIssue.setPriority(issueRequest.getPriority());
-        existingIssue.setDueDate(issueRequest.getDueDate());
-        return issueRepository.save(existingIssue);
-    }
-
-    @Transactional
-    public Issue updateIssue(Long issueId, IssueRequest issueRequest, String actorEmail) throws Exception {
-        Issue existingIssue = getIssueById(issueId);
-        projectService.ensureProjectMemberOrOwner(existingIssue.getProject().getProjectId(), actorEmail);
-        return updateIssue(issueId, issueRequest);
+        String oldAssignee = issue.getAssignedUser() != null ? issue.getAssignedUser().getFullName() : "Unassigned";
+        Issue updated = addUserToIssue(issueId, userId);
+        auditService.log(actorEmail, issue.getProject().getProjectId(), AuditEntityType.ISSUE,
+                issueId, AuditAction.ASSIGNED, oldAssignee, updated.getAssignedUser().getFullName());
+        return updated;
     }
 
     @Transactional
     public Issue updateIssueStatus(Long issueId, String status) throws Exception {
         Issue existingIssue = getIssueById(issueId);
-        existingIssue.setIssueStatus(status);
+        existingIssue.setIssueStatus(IssueStatus.from(status).name());
         return issueRepository.save(existingIssue);
     }
 
@@ -121,7 +116,11 @@ public class IssueService {
     public Issue updateIssueStatus(Long issueId, String status, String actorEmail) throws Exception {
         Issue existingIssue = getIssueById(issueId);
         projectService.ensureProjectMemberOrOwner(existingIssue.getProject().getProjectId(), actorEmail);
-        return updateIssueStatus(issueId, status);
+        String oldStatus = existingIssue.getIssueStatus();
+        Issue updated = updateIssueStatus(issueId, status);
+        auditService.log(actorEmail, existingIssue.getProject().getProjectId(), AuditEntityType.ISSUE,
+                issueId, AuditAction.STATUS_CHANGED, oldStatus, updated.getIssueStatus());
+        return updated;
     }
 
 }

@@ -1,291 +1,127 @@
-# Project Management Web Application
-
-##  Project Overview
-
-This project aims to develop a comprehensive **web application for project management**, enabling users to create and manage projects efficiently. The platform provides features for creating projects, inviting users to join projects, managing issues, facilitating project-based communication through chats, and much more.
-
----
-
-##  Technologies Used
-
-### Frontend Technologies
-
-- **React**
-  - A JavaScript library for building user interfaces
-  - Enables component-based architecture for reusable UI elements
-  - Provides efficient rendering through virtual DOM
-
-- **Redux (for state management)**
-  - Centralized state management for the application
-  - Ensures predictable state transitions
-  - Facilitates data flow across different components
-
-- **Tailwind CSS (for styling)**
-  - Utility-first CSS framework
-  - Enables rapid UI development
-  - Provides responsive design capabilities out of the box
-
-- **Shadcn UI Library (for UI components)**
-  - Pre-built, accessible UI components
-  - Ensures consistent design patterns
-  - Customizable and themeable components
-
-### Backend Technologies
-
-- **Spring Boot**
-  - Java-based framework for building production-ready applications
-  - Provides auto-configuration and embedded servers
-  - Simplifies backend development with convention over configuration
-
-- **Spring Security (for authentication and authorization)**
-  - Comprehensive security framework
-  - Protects against common security threats (CSRF, XSS, etc.)
-  - Provides flexible authentication mechanisms
-
-- **JSON Web Token (JWT) for session management**
-  - Stateless authentication mechanism
-  - Secure transmission of information between parties
-  - Enables scalable, distributed system architecture
-
-- **Spring Starter Mail (for email notifications)**
-  - Simplifies email sending functionality
-  - Supports various email providers
-  - Enables automated notification systems
-
-### Database
-
-- **MySQL**
-  - Relational database management system
-  - ACID-compliant for data integrity
-  - Strong consistency and reliability
-
-### Payment Gateway
-
-- **Razorpay**
-  - Payment processing platform
-  - Supports multiple payment methods
-  - Secure transaction handling
-
----
-
-##  Key Features
-
-1. **Search**
-   - Full-text search capabilities across projects and issues
-   - Quick access to relevant information
-
-2. **Filter**
-   - Advanced filtering options based on multiple criteria
-   - Customizable views for better organization
-
-3. **CRUD Operations (Create, Delete, Update, Get)**
-   - Complete data management capabilities
-   - Intuitive interfaces for all operations
-
-4. **Chat**
-   - Real-time communication within projects
-   - Facilitates team collaboration
-
-5. **Subscription Plan**
-   - Tiered access levels
-   - Feature-based pricing models
-
----
-
-##  Project Management
-
-### Create Project
-**Functionality:** Users can create new projects by specifying comprehensive project details.
-
-**Details Include:**
-- Project name
-- Description
-- Tags for categorization
-- Additional metadata
-
-**Use Case:** Teams can quickly set up dedicated workspaces for different initiatives, ensuring organized project tracking from the start.
-
----
-
-### Send Invitation for Joining Project
-**Functionality:** Project owners and administrators can invite other users to join their projects.
-
-**Capabilities:**
-- Email-based invitations
-- Role-based access assignment
-- Permission management
-
-**Use Case:** Streamlines team onboarding by allowing project leads to add members without requiring manual account creation or complex setup procedures.
-
----
-
-### Filter Projects
-**Functionality:** Users can filter projects based on various criteria.
-
-**Filter Criteria:**
-- Project name
-- Tags
-- Category
-- Status
-- Date ranges
-- Team members
-
-**Use Case:** Enables users to quickly locate relevant projects in environments with multiple active initiatives, improving productivity and focus.
-
----
-
-### Search Projects
-**Functionality:** Users can search for projects using keywords.
-
-**Features:**
-- Keyword-based search
-- Fuzzy matching capabilities
-- Search across multiple fields (name, description, tags)
-
-**Use Case:** Provides instant access to projects without navigating through multiple filters, especially useful in large-scale deployments.
-
----
-
-##  Issue Management
-
-### Create Issue
-**Functionality:** Users can create issues within projects with comprehensive details.
-
-**Issue Details Include:**
-- Title
-- Description
-- Priority levels (Low, Medium, High, Critical)
-- Assignee assignment
-- Due dates
-- Labels and tags
-
-**Use Case:** Enables systematic tracking of bugs, features, tasks, and improvements, ensuring nothing falls through the cracks.
-
----
-
-### Filter Issues
-**Functionality:** Users can filter issues based on various criteria.
-
-**Filter Options:**
-- Status (Open, In Progress, Review, Closed)
-- Priority levels
-- Assignee
-- Creation date
-- Labels
-- Project association
-
-**Use Case:** Helps team members focus on relevant issues, prioritize work effectively, and manage workload efficiently.
-
----
-
-### User Comments on Issues
-**Functionality:** Users can comment on issues to facilitate collaboration and communication.
-
-**Features:**
-- Rich text comments
-- @mentions for team members
-- File attachments
-- Comment threading
-
-**Use Case:** Promotes transparent communication, reduces email clutter, and maintains a complete audit trail of discussions related to specific issues.
-
----
-
-### CRUD Operations on Issues
-**Functionality:** Users can perform complete CRUD (Create, Read, Update, Delete) operations on issues.
-
-**Operations:**
-- **Create:** Add new issues to the system
-- **Read:** View issue details and history
-- **Update:** Modify issue attributes, status, assignments
-- **Delete:** Remove issues (with appropriate permissions)
-
-**Use Case:** Provides complete lifecycle management for issues, allowing teams to adapt and update their work items as requirements evolve.
-
----
-
-##  Project Communication
-
-### Project Chat
-**Functionality:** Users can communicate within projects using integrated chat functionality.
-
-**Features:**
-- Real-time messaging
-- Group conversations
-- Direct messages
-- Message history
-- File sharing capabilities
-
-**Use Case:** Enables instant collaboration without switching to external communication tools, keeping all project-related discussions centralized and accessible.
-
----
-
-### Email Notification
-**Functionality:** Users receive notifications for project-related activities.
-
-**Notification Triggers:**
-- New issues created
-- Issues assigned to user
-- Status updates
-- Comments on issues
-- Project invitations
-- Mention notifications
-- Deadline reminders
-
-**Use Case:** Ensures team members stay informed about important activities even when not actively using the application, improving response times and accountability.
-
----
-
-##  Security & Authentication
-
-The application implements enterprise-grade security through:
-- **Spring Security** for authentication and authorization
-- **JWT tokens** for secure, stateless session management
-- Role-based access control (RBAC)
-- Encrypted data transmission
-- Protection against common web vulnerabilities
-
----
-
-##  Monetization
-
-Integration with **Razorpay** payment gateway enables:
-- Subscription-based access models
-- Multiple payment method support
-- Secure transaction processing
-- Automated billing cycles
-- Plan upgrades/downgrades
-
----
-
-##  System Architecture Benefits
-
-### Scalability
-- Microservices-ready architecture
-- Stateless authentication enables horizontal scaling
-- Database optimization for growing data
-
-### Maintainability
-- Clear separation of concerns (frontend/backend)
-- Modular component design
-- Well-documented codebase
-
-### User Experience
-- Responsive design for multiple devices
-- Intuitive navigation
-- Real-time updates
-- Minimal learning curve
-
----
-
-## Known Limitations & Trade-offs
-
-1. JWTs are currently managed via localStorage for MVP simplicity, acknowledging XSS risks. Production migration to HttpOnly cookies is planned.
-2. Pagination is implemented on list endpoints, but deep nested entity fetches (Project → Issues → Comments) require explicit @EntityGraph optimization to prevent N+1 queries.
-3. No rate limiting is currently enforced on public endpoints.
-
----
-
-##  Conclusion
-
-This project management application combines modern web technologies with comprehensive feature sets to deliver a powerful platform for team collaboration and project tracking. The technology stack ensures performance, security, and scalability, while the feature set addresses real-world project management needs.
+# SprintFlow — Project & Issue Tracker
+
+A backend-focused full-stack project-management app: users register, create
+projects, invite team members by email, track issues (status/priority/assignee),
+discuss via comments and per-project chat, and manage FREE/MONTHLY/YEARLY
+subscriptions with Razorpay payment links.
+
+**Stack (what's actually used):** Java 21 · Spring Boot 3.5 (Web, Security,
+Data JPA, Validation, Mail) · MySQL 8 + Flyway · JWT in HttpOnly cookies ·
+MapStruct · springdoc-openapi · React 19 + Vite · React Router 7 ·
+TanStack Query 5 · react-hook-form + Zod · Radix/shadcn + Tailwind · axios ·
+Recharts · Sonner. No Redux, no microservices, no AI — deliberately.
+
+## Architecture
+
+```
+Browser (React/Vite) ──HTTPS/JSON + HttpOnly cookie──> Spring Boot API ──JPA──> MySQL 8
+                        Swagger UI at /swagger-ui.html   Flyway migrations ──> (V1 schema, V2 constraints)
+                                                         SMTP (Gmail) ──> invitation emails
+                                                         Razorpay ──> payment links
+```
+
+Layered monolith: `controller → service → repository → entity`, MapStruct
+DTOs at the API boundary, imperative ownership/membership checks
+(`ProjectService.ensureProjectOwner / ensureProjectMemberOrOwner`), global
+`ApiErrorResponse` error shape.
+
+## Features (honest status)
+
+| Feature | Status |
+|---|---|
+| Register / login / logout (BCrypt + HttpOnly JWT cookie) | Working |
+| Project CRUD, list (paged, category/tag filter), search (paged) | Working |
+| Email invitations (7-day, one-time, atomic accept) + in-app accept page | Working |
+| Issue CRUD, assign (owner-only), status transitions | Working |
+| Issue comments (member-only read/write, author-only delete) | Working |
+| Per-project chat (5s polling — not WebSockets) | Working |
+| Project activity feed (append-only audit log with summaries) | Working |
+| Subscriptions FREE/MONTHLY/YEARLY, Razorpay payment-link creation | Working (test-mode links only) |
+| Plan upgrade via payment redirect (no webhook verification yet) | Partial — test mode only, see Limitations |
+| Dashboard stats, settings/profile, upgrade flow | Working |
+
+## Quick start
+
+Prereqs: Docker (for MySQL + API), Node 22, Java 21 + Maven (only for
+backend dev outside Docker).
+
+```bash
+# 1. Configure (never commit .env files)
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+# edit backend/.env: set SPRINGFLOW_JWT_SECRET (openssl rand -hex 32),
+# DB/mail/Razorpay values as needed.
+
+# 2. Start MySQL + API (Flyway migrates automatically)
+docker compose up --build
+
+# 3. Start the UI
+cd frontend && npm install && npm run dev
+```
+
+Open the app at http://localhost:5173, API at http://localhost:8080,
+Swagger UI at http://localhost:8080/swagger-ui.html.
+
+## Testing
+
+```bash
+cd backend && mvn verify        # unit + MockMvc authz matrix (needs MySQL, see CI)
+cd frontend && npm run lint && npm run build && npm test
+```
+
+- Backend: 70 tests green — controller auth tests (incl. 401/409/429,
+  comment-list IDOR regression, activity-feed authz), service unit tests,
+  audit summary + recording tests, rate-limiter tests, MapStruct mapper
+  tests, Testcontainers repository integration tests
+  (skip gracefully without Docker).
+- Frontend: 5 Vitest + Testing Library tests (form validation, confirm
+  dialog, login flow) run in jsdom.
+- `backend/qa_tests/*.js` are legacy manual scripts for a live server;
+  MockMvc tests are the source of truth.
+- CI (`.github/workflows/ci.yml`) runs backend `mvn -B verify` against a
+  MySQL 8.0 service plus frontend lint + build on every push/PR.
+
+## Database
+
+- `backend/src/main/resources/db/migration/V1__initial_schema.sql` — full
+  schema (users, roles, projects, members, issues, comments, chats, messages,
+  invitations, subscriptions), InnoDB/`utf8mb4`, FK constraints, unique email.
+- `V2__issue_constraints.sql` — CHECK constraints locking issue
+  status ∈ {TODO, IN_PROGRESS, DONE} and priority ∈ {LOW, MEDIUM, HIGH},
+  plus indexes on `invitation.token` and `message.chat`.
+- `spring.jpa.hibernate.ddl-auto=validate`: Hibernate never mutates the
+  schema; Flyway owns it.
+
+## Security notes
+
+- Passwords: BCrypt. Sessions: stateless JWT in HttpOnly `SameSite=Lax`
+  cookie (`Authorization: Bearer` also accepted). CSRF disabled as for a
+  same-origin cookie demo — locked origins via `SPRINGFLOW_CORS_ALLOWED_ORIGINS`.
+- Every `/api/**` route requires authentication; project data additionally
+  requires owner/member checks (a previous comment-list IDOR is covered by a
+  regression test).
+- Auth failures return generic 401/409 messages (no user enumeration).
+- Secrets live only in `.env` (gitignored, see `.env.example`). A debug JWT
+  once committed in `cookiejar2.txt` was removed; rotate
+  `SPRINGFLOW_JWT_SECRET` if that token ever touched a shared environment.
+
+## Known limitations & trade-offs
+
+1. Payments are **test-mode links only**: the app creates Razorpay payment
+   links with test keys and updates the plan on redirect back. There is no
+   server-side webhook/signature verification (`PaymentService.completePayment`
+   is the reserved hook), so **do not accept real money** with this build.
+   Wiring the webhook is tracked future work.
+2. Auth endpoints are rate-limited in-memory (20 req/min/IP, single instance).
+3. Chat is 5s polling, not WebSockets — fine for a demo, stated honestly.
+4. No assigned-issues-across-projects endpoint yet (dashboard shows only
+   project-derived stats).
+5. Single-layer roles (`USER` default); project owner/member checks are
+   enforced imperatively in services, not via role annotations.
+
+## Future work (explicitly *not* added)
+
+Redis, Kafka, Elasticsearch, WebSockets, microservices, Kubernetes, AI
+summarization — none solves a problem this codebase has; each would add
+complexity a fresher couldn't defend. See the audit for the full
+build-vs-buy reasoning.

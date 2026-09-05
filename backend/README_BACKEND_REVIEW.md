@@ -1,5 +1,9 @@
 # Sprintflow Backend Review
 
+> Historical snapshot: this review describes the codebase *before* the
+> remediation phases in `CHANGELOG.md` (including the v1.0 hardening pass).
+> Scores below no longer reflect the current tree — kept for audit trail.
+
 ## Executive Summary
 
 This backend is not production-ready. The codebase has compile-time defects, invalid persistence mappings, hardcoded secrets, weak security boundaries, and almost no test coverage. The current implementation is acceptable as an early prototype, but it is not suitable for a Fortune 500 production deployment without substantial remediation.

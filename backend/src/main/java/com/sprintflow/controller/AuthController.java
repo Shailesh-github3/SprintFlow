@@ -16,12 +16,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import com.sprintflow.repository.UserRepository;
 import com.sprintflow.config.JwtProvider;
 import com.sprintflow.entity.User;
+import com.sprintflow.exception.InvalidCredentialsException;
+import com.sprintflow.service.AuthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.PostMapping;
-import com.sprintflow.service.SubscriptionService;
 import com.sprintflow.config.JwtConstant;
 import com.sprintflow.config.JwtProperties;
 import jakarta.validation.Valid;
@@ -32,35 +33,23 @@ import com.sprintflow.request.RegisterRequest;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final SubscriptionService subscriptionService;
+    private final AuthService authService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final JwtProperties jwtProperties;
 
-    public AuthController(UserRepository userRepository, PasswordEncoder passwordEncoder, SubscriptionService subscriptionService, JwtProvider jwtProvider, JwtProperties jwtProperties) {
+    public AuthController(AuthService authService, UserRepository userRepository, PasswordEncoder passwordEncoder, JwtProvider jwtProvider, JwtProperties jwtProperties) {
+        this.authService = authService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.subscriptionService = subscriptionService;
         this.jwtProvider = jwtProvider;
         this.jwtProperties = jwtProperties;
     }
 
     @PostMapping("/register")    
     public ResponseEntity<?> registerUserHandler(@Valid @RequestBody RegisterRequest request, HttpServletRequest servletRequest, HttpServletResponse servletResponse) throws Exception {
-        // Check if the user already exists
-        if (userRepository.findByEmail(request.getEmail()) != null) {
-            throw new Exception("User with email " + request.getEmail() + " already exists.");
-        }
-
-        User newUser = new User();
-        newUser.setPassword(passwordEncoder.encode(request.getPassword()));
-        newUser.setEmail(request.getEmail());
-        newUser.setFullName(request.getFullName());
-        newUser.setRoles(List.of("USER"));
-        User savedUser = userRepository.save(newUser);
-
-        subscriptionService.createSubscription(savedUser);
+        User savedUser = authService.register(request.getFullName(), request.getEmail(), request.getPassword());
 
         Authentication authenication = new UsernamePasswordAuthenticationToken(
             savedUser.getEmail(), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
@@ -76,7 +65,7 @@ public class AuthController {
     public ResponseEntity<?> loginHandler(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest, HttpServletResponse servletResponse) throws Exception {
         User existingUser = userRepository.findByEmail(request.getEmail());
         if (existingUser == null || !passwordEncoder.matches(request.getPassword(), existingUser.getPassword())) {
-            throw new Exception("Invalid email or password.");
+            throw new InvalidCredentialsException("Invalid email or password.");
         }
 
         List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();

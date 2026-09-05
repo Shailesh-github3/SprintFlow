@@ -1,7 +1,5 @@
 package com.sprintflow.service;
 
-import java.util.List;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -10,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sprintflow.entity.Chat;
 import com.sprintflow.entity.Project;
 import com.sprintflow.entity.User;
+import com.sprintflow.exception.ResourceNotFoundException;
 import com.sprintflow.repository.ProjectRepository;
 
 @Service
@@ -17,12 +16,10 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserService userService;
-    private final ChatService chatService;
 
-    public ProjectService(ProjectRepository projectRepository, UserService userService, ChatService chatService) {
+    public ProjectService(ProjectRepository projectRepository, UserService userService) {
         this.projectRepository = projectRepository;
         this.userService = userService;
-        this.chatService = chatService;
     }
 
     @Transactional
@@ -101,19 +98,7 @@ public class ProjectService {
             project.getProjectMembers().add(user);
             projectRepository.save(project);
         } else {
-            throw new Exception("User is already a member of the project.");
-        }
-    }
-
-    @Transactional
-    public void removeTeamMember(Long projectId, Long userId) throws Exception {
-        Project project = getProjectById(projectId);
-        User user = userService.getUserByUserId(userId);
-        if (project.getProjectMembers().contains(user)) {
-            project.getProjectMembers().remove(user);
-            projectRepository.save(project);
-        } else {
-            throw new Exception("User is not a member of the project.");
+            throw new IllegalArgumentException("User is already a member of the project.");
         }
     }
 
@@ -121,15 +106,14 @@ public class ProjectService {
     public Chat getChatByProjectId(Long projectId) throws Exception {
         Project project = getProjectById(projectId);
         if (project.getChat() == null) {
-            throw new Exception("Chat not found for project with id: " + projectId);
+            throw new ResourceNotFoundException("Chat not found for project with id: " + projectId);
         }
         return project.getChat();
     }
 
     @Transactional(readOnly = true)
-    public List<Project> searchProjects(String keyword, User user) { 
-        List<Project> projects = projectRepository.findByProjectNameContainingAndProjectMembersContaining(keyword, user);
-        return projects;
+    public Page<Project> searchProjects(String keyword, User user, Pageable pageable) {
+        return projectRepository.findByProjectNameContainingAndProjectMembersContaining(keyword, user, pageable);
     }
 
 }

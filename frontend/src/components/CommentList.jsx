@@ -8,18 +8,20 @@ import { Textarea } from './ui/textarea';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { Skeleton } from './ui/skeleton';
 import { useAuth } from '../contexts/AuthContext';
+import ConfirmDialog from './ConfirmDialog';
 
 const CommentList = ({ issueId }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [newComment, setNewComment] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // Fetch Comments
+  // Fetch Comments (paged response: unwrap `content`)
   const { data: comments, isLoading, isError } = useQuery({
     queryKey: ['comments', issueId],
     queryFn: async () => {
       const response = await api.get(`/api/comments/issue/${issueId}`);
-      return response.data;
+      return response.data.content ?? response.data;
     },
     enabled: !!issueId,
   });
@@ -60,9 +62,7 @@ const CommentList = ({ issueId }) => {
   };
 
   const handleDelete = (commentId) => {
-    if (window.confirm('Delete this comment?')) {
-      deleteMutation.mutate(commentId);
-    }
+    setDeleteTarget(commentId);
   };
 
   if (isError) {
@@ -133,6 +133,17 @@ const CommentList = ({ issueId }) => {
           ))
         )}
       </div>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        setOpen={(open) => !open && setDeleteTarget(null)}
+        title="Delete comment?"
+        description="This will permanently delete the comment."
+        confirmLabel="Delete comment"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+      />
     </div>
   );
 };

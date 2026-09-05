@@ -17,6 +17,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('user');
+      sessionStorage.setItem('session-expired', '1');
       window.dispatchEvent(new Event('auth:logout'));
        window.location.href = '/login'; // Optional: Redirect to login
     }
