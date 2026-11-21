@@ -9,6 +9,6 @@ import com.sprintflow.entity.Issue;
 
 
 public interface IssueRepository extends JpaRepository<Issue, Long> {
-    @EntityGraph(attributePaths = {"comments", "assignedUser"})
+    @EntityGraph(attributePaths = {"assignedUser"})
     Page<Issue> findByProject_ProjectId(Long projectId, Pageable pageable);
 }

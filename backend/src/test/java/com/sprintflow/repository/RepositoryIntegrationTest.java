@@ -26,6 +26,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.sprintflow.entity.Chat;
 import com.sprintflow.entity.Issue;
 import com.sprintflow.entity.PlanType;
 import com.sprintflow.entity.Project;
@@ -87,7 +88,7 @@ class RepositoryIntegrationTest {
     }
 
     @Test
-    @DisplayName("uses EntityGraph to initialize project owner and issue collection")
+    @DisplayName("uses EntityGraph to initialize project owner and chat")
     void findProjectsForMemberWithFilters_shouldInitializeGraph() {
         // Given
         User owner = userRepository.saveAndFlush(buildUser("owner@example.com"));
@@ -99,15 +100,13 @@ class RepositoryIntegrationTest {
         project.setCategory("Software");
         project.setProjectOwner(owner);
         project.setProjectMembers(new java.util.ArrayList<>(List.of(owner, member)));
-        project = projectRepository.saveAndFlush(project);
 
-        Issue issue = new Issue();
-        issue.setIssueTitle("Graph issue");
-        issue.setIssueDescription("Issue to keep the association populated");
-        issue.setIssueStatus("TODO");
-        issue.setPriority("HIGH");
-        issue.setProject(project);
-        issueRepository.saveAndFlush(issue);
+        Chat chat = new Chat();
+        chat.setChatName("Graph Chat");
+        chat.setProject(project);
+        project.setChat(chat);
+
+        project = projectRepository.saveAndFlush(project);
 
         entityManager.clear();
 
@@ -121,8 +120,7 @@ class RepositoryIntegrationTest {
 
         // Then
         assertTrue(Hibernate.isInitialized(fetched.getProjectOwner()));
-        assertTrue(Hibernate.isInitialized(fetched.getIssues()));
-        assertEquals(1, fetched.getIssues().size());
+        assertTrue(Hibernate.isInitialized(fetched.getChat()));
     }
 
     @Test

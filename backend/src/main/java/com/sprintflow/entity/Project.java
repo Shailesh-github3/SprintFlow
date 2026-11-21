@@ -32,6 +32,7 @@ public class Project {
     private String projectDescription;
     private String category;
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @ElementCollection
     @CollectionTable(name = "project_tags", joinColumns = @JoinColumn(name = "project_id"))
     private List<String> tags = new java.util.ArrayList<>();
@@ -47,6 +48,7 @@ public class Project {
     @OneToMany(mappedBy = "project", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
     private List<Issue> issues = new java.util.ArrayList<>();
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @ManyToMany
     private List<User> projectMembers = new java.util.ArrayList<>();
 

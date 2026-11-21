@@ -167,3 +167,20 @@ The following RBAC and endpoint security improvements have been applied:
   - Updated `UpgradeSuccess.jsx` to submit transaction parameters (`razorpayOrderId`, `razorpayPaymentId`, `razorpaySignature`) to `POST /api/payments/verify`.
 - **Secret & File Hygiene**:
   - Cleaned up untracked debug files (`cookiejar.txt`, `cookiejar2.txt`) from disk.
+
+## Phase 2: Database & Query Performance Remediation (Completed)
+
+- **Eliminated Hibernate In-Memory Pagination Hazard**:
+  - In `ProjectRepository.findProjectsForMemberWithFilters`, replaced collection fetch `attributePaths = {"issues", "projectOwner"}` with to-one associations `attributePaths = {"projectOwner", "chat"}`. This eliminates the `HHH000104` warning where Hibernate fetched all issues into JVM memory to perform in-memory pagination.
+  - In `IssueRepository.findByProject_ProjectId`, removed collection fetch `"comments"` from `@EntityGraph`, keeping only `"assignedUser"`.
+- **Eliminated N+1 Query Loops via Hibernate Batch Fetching**:
+  - Enabled `spring.jpa.properties.hibernate.default_batch_fetch_size=20` in `application.properties`.
+  - Added `@BatchSize(size = 20)` to `Project.tags`, `Project.projectMembers`, and `Issue.tags`. When mapping paginated DTO results, collections are batch-fetched across the page in single `IN (?, ?...)` queries rather than N individual queries.
+- **Fixed JPA Entity Index Column Mappings**:
+  - Corrected `Issue.java` `@Table` index column name from `project_id` to actual DB column `project_project_id`.
+  - Corrected `Comment.java` `@Table` index column name from `issue_id` to actual DB column `issue_issue_id`.
+- **Project Filter Query Alignment**:
+  - Aligned `ProjectRepository.findProjectsForMemberWithFilters` WHERE clause to `(m = :user OR p.projectOwner = :user)` so owners consistently retrieve their projects regardless of explicit member table presence.
+- **Tests**:
+  - Updated `RepositoryIntegrationTest` to assert initialization of `projectOwner` and `chat`. All 67 backend test cases pass cleanly.
+

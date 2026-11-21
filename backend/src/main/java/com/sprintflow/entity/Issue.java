@@ -18,7 +18,7 @@ import jakarta.persistence.Index;
 import lombok.Data;
 
 @Entity
-@Table(indexes = { @Index(name="idx_issue_project", columnList="project_id") })
+@Table(indexes = { @Index(name="idx_issue_project", columnList="project_project_id") })
 @Data
 public class Issue {
 
@@ -31,6 +31,7 @@ public class Issue {
     private String issueStatus;
     private String priority;
     private LocalDate dueDate;
+    @org.hibernate.annotations.BatchSize(size = 20)
     @ElementCollection
     @CollectionTable(name = "issue_tags", joinColumns = @JoinColumn(name = "issue_id"))
     private List<String> tags = new java.util.ArrayList<>();

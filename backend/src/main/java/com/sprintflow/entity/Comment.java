@@ -14,7 +14,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(indexes = { @Index(name="idx_comment_issue", columnList="issue_id") })
+@Table(indexes = { @Index(name="idx_comment_issue", columnList="issue_issue_id") })
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
