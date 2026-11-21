@@ -60,7 +60,7 @@ class InvitationServiceTest {
             existing.setUserEmail("alice@example.com");
             existing.setProjectId(42L);
 
-            when(invitationRepository.findByUserEmail("alice@example.com")).thenReturn(existing);
+            when(invitationRepository.findByUserEmailAndProjectId("alice@example.com", 42L)).thenReturn(existing);
             when(invitationRepository.save(any(Invitation.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
             UUID fixedUuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");

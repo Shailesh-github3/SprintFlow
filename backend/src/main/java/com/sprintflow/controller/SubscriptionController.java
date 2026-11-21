@@ -4,17 +4,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.sprintflow.entity.PlanType;
+import com.sprintflow.dto.SubscriptionDTO;
+import com.sprintflow.entity.Subscription;
 import com.sprintflow.entity.User;
+import com.sprintflow.mapper.SubscriptionMapper;
 import com.sprintflow.service.SubscriptionService;
 import com.sprintflow.service.UserService;
-import com.sprintflow.mapper.SubscriptionMapper;
 
 @RestController
 @RequestMapping("/api/subscriptions")
@@ -32,40 +31,22 @@ public class SubscriptionController {
 
     @PostMapping("/create")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> createSubscription() {
-        try {
-            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-            User user = userService.findByEmail(currentUserEmail);
-            subscriptionService.createSubscription(user);
-            return ResponseEntity.ok("Subscription created successfully for user: " + currentUserEmail);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+    public ResponseEntity<SubscriptionDTO> createSubscription() {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userService.findByEmail(currentUserEmail);
+        Subscription existing = subscriptionService.getSubscriptionByUserId(user.getUserId());
+        if (existing == null) {
+            existing = subscriptionService.createSubscription(user);
         }
+        return ResponseEntity.ok(subscriptionMapper.toDto(existing));
     }
 
     @GetMapping("/user")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getUserSubscription() {
-        try {
-            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-            User user = userService.findByEmail(currentUserEmail);
-            return ResponseEntity.ok(subscriptionMapper.toDto(subscriptionService.getSubscriptionByUserId(user.getUserId())));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    public ResponseEntity<SubscriptionDTO> getUserSubscription() {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userService.findByEmail(currentUserEmail);
+        Subscription subscription = subscriptionService.getSubscriptionByUserId(user.getUserId());
+        return ResponseEntity.ok(subscriptionMapper.toDto(subscription));
     }
-
-    @PatchMapping("/update/{planType}")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> updateUserSubscription(@PathVariable String planType) {
-        try {
-            String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-            User user = userService.findByEmail(currentUserEmail);
-            subscriptionService.updateSubscription(user.getUserId(), PlanType.valueOf(planType.toUpperCase()));
-            return ResponseEntity.ok("Subscription updated successfully for user: " + currentUserEmail);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
 }

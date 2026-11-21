@@ -28,15 +28,25 @@ public class PaymentService {
     private final SubscriptionService subscriptionService;
     private final String apiKey;
     private final String apiSecret;
+    private final String frontendUrl;
 
     public PaymentService(UserService userService,
                           SubscriptionService subscriptionService,
                           @Value("${razorpay.keyId}") String apiKey,
                           @Value("${razorpay.keySecret}") String apiSecret) {
+        this(userService, subscriptionService, apiKey, apiSecret, "http://localhost:5173");
+    }
+
+    public PaymentService(UserService userService,
+                          SubscriptionService subscriptionService,
+                          @Value("${razorpay.keyId}") String apiKey,
+                          @Value("${razorpay.keySecret}") String apiSecret,
+                          @Value("${sprintflow.frontend.url:http://localhost:5173}") String frontendUrl) {
         this.userService = userService;
         this.subscriptionService = subscriptionService;
         this.apiKey = apiKey;
         this.apiSecret = apiSecret;
+        this.frontendUrl = frontendUrl;
     }
 
     public Optional<PaymentLinkResponse> createPaymentLink(String userEmail, PlanType planType) {
@@ -103,7 +113,7 @@ public class PaymentService {
         notify.put("email", true);
         paymentLinkRequest.put("notify", notify);
 
-        paymentLinkRequest.put("callback_url", "https://localhost:5173/upgrade-plan/success?planType=" + planType.name());
+        paymentLinkRequest.put("callback_url", frontendUrl + "/upgrade-plan/success?planType=" + planType.name());
 
         return paymentLinkRequest;
     }

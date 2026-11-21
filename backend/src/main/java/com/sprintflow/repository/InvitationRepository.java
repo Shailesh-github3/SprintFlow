@@ -5,12 +5,13 @@ import org.springframework.stereotype.Repository;
 
 import com.sprintflow.entity.Invitation;
 
+import java.util.List;
+
 @Repository
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
-    // You can define custom query methods here if needed
 
     Invitation findByToken(String token);
-    Invitation findByUserEmail(String userEmail);
-    
+    Invitation findByUserEmailAndProjectId(String userEmail, Long projectId);
+    List<Invitation> findByUserEmail(String userEmail);
 
 }

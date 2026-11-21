@@ -86,7 +86,7 @@ class PaymentServiceTest {
                 assertEquals("INR", request.getString("currency"));
                 assertEquals("Payment for MONTHLY plan", request.getString("description"));
                 assertEquals("alice@example.com", request.getJSONObject("customer").getString("email"));
-                assertEquals("https://localhost:5173/upgrade-plan/success?planType=MONTHLY", request.getString("callback_url"));
+                assertEquals("http://localhost:5173/upgrade-plan/success?planType=MONTHLY", request.getString("callback_url"));
                 verify(razorpayPaymentLink, times(1)).get("id");
                 verify(razorpayPaymentLink, times(1)).get("short_url");
             }

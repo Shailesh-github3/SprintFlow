@@ -33,8 +33,8 @@ public class InvitationService {
 
     @Transactional
     public void sendInvitation(String userEmail, long projectId, String invitedByEmail, Long invitedUserId) {
-        Invitation existing = invitationRepository.findByUserEmail(userEmail);
-        if (existing != null && existing.getProjectId().equals(projectId)) {
+        Invitation existing = invitationRepository.findByUserEmailAndProjectId(userEmail, projectId);
+        if (existing != null) {
             invitationRepository.delete(existing);
         }
 

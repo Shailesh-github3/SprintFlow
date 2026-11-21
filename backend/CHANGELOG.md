@@ -152,3 +152,18 @@ The following RBAC and endpoint security improvements have been applied:
 - Read endpoint `GET /api/projects/{id}/activity` (paged, member-only).
 - Tests: summary cases, recording wiring for all five events, endpoint
   200/403; invite/accept tests extended with audit verifications.
+
+## Phase 1: Security & Stability Hardening (Completed)
+
+- **Subscription Upgrade Security**:
+  - Removed unauthenticated backdoor `PATCH /api/subscriptions/update/{planType}` from `SubscriptionController`.
+  - Added `PaymentVerificationRequest` DTO and `POST /api/payments/verify` in `PaymentController` requiring authenticated user context and HMAC-SHA256 signature verification via `PaymentService.completePayment()`.
+  - Injected `frontendUrl` into `PaymentService` to fix hardcoded `https://localhost:5173` callback URLs in Razorpay payment link generation.
+  - Standardized `SubscriptionController` responses to return `SubscriptionDTO` rather than raw error strings.
+- **Invitation Multi-Tenancy Fix**:
+  - Replaced single-result `findByUserEmail` query in `InvitationRepository` with `findByUserEmailAndProjectId(email, projectId)` to eliminate `NonUniqueResultException` (`IncorrectResultSizeDataAccessException`) when a user is invited to multiple projects.
+- **Frontend Auth & UX Interceptor Fix**:
+  - Fixed Axios 401 response interceptor in `api.js` to exclude `/api/auth/login` and `/api/auth/register`, ensuring authentication errors display inline form feedback instead of causing hard reloads and flashing irrelevant "session expired" notices.
+  - Updated `UpgradeSuccess.jsx` to submit transaction parameters (`razorpayOrderId`, `razorpayPaymentId`, `razorpaySignature`) to `POST /api/payments/verify`.
+- **Secret & File Hygiene**:
+  - Cleaned up untracked debug files (`cookiejar.txt`, `cookiejar2.txt`) from disk.
