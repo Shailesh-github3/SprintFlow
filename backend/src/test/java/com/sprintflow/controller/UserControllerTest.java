@@ -7,11 +7,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sprintflow.config.JwtService;
 import com.sprintflow.config.JwtTokenValidator;
+import com.sprintflow.dto.DashboardStatsDTO;
 import com.sprintflow.dto.UserDTO;
 import com.sprintflow.entity.User;
 import com.sprintflow.mapper.UserMapper;
 import com.sprintflow.service.UserService;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -70,5 +72,29 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/users/me"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(username = "alice@example.com", roles = "USER")
+    @DisplayName("getDashboardStats returns aggregated metrics")
+    void getDashboardStats_shouldReturnAggregatedStats_whenAuthenticated() throws Exception {
+        User user = new User();
+        user.setUserId(1L);
+        user.setEmail("alice@example.com");
+
+        DashboardStatsDTO stats = new DashboardStatsDTO(4L, 15L, 5L, 3L, 7L, 2L, 46.7);
+
+        when(userService.getUserByEmail("alice@example.com")).thenReturn(user);
+        when(userService.getDashboardStats(user)).thenReturn(stats);
+
+        mockMvc.perform(get("/api/users/dashboard-stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalProjects").value(4))
+                .andExpect(jsonPath("$.totalIssues").value(15))
+                .andExpect(jsonPath("$.todoIssues").value(5))
+                .andExpect(jsonPath("$.inProgressIssues").value(3))
+                .andExpect(jsonPath("$.completedIssues").value(7))
+                .andExpect(jsonPath("$.overdueIssues").value(2))
+                .andExpect(jsonPath("$.completionPercentage").value(46.7));
     }
 }
