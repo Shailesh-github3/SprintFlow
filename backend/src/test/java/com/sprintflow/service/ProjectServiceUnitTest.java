@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 import java.util.ArrayList;
 import java.util.Optional;
 
+import com.sprintflow.entity.PlanType;
 import com.sprintflow.entity.Project;
+import com.sprintflow.entity.Subscription;
 import com.sprintflow.entity.User;
 import com.sprintflow.exception.ResourceNotFoundException;
 import com.sprintflow.repository.ProjectRepository;
@@ -30,6 +32,9 @@ class ProjectServiceUnitTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private SubscriptionService subscriptionService;
 
     @InjectMocks
     private ProjectService projectService;
@@ -126,5 +131,44 @@ class ProjectServiceUnitTest {
         assertNotNull(result.getProjectMembers(), "Project members should not be null");
         assertEquals(true, result.getProjectMembers().contains(owner),
                 "Owner should be auto-added to project members");
+    }
+
+    @Test
+    @DisplayName("createProject throws SecurityException when free plan limit of 3 projects is reached")
+    void createProject_ThrowsSecurityException_WhenFreePlanLimitExceeded() {
+        Subscription freeSub = new Subscription();
+        freeSub.setPlanType(PlanType.FREE);
+        when(subscriptionService.getSubscriptionByUserId(owner.getUserId())).thenReturn(freeSub);
+        when(projectRepository.countByProjectOwner(owner)).thenReturn(3L);
+
+        Project inputProject = new Project();
+        inputProject.setProjectName("Fourth Project");
+
+        SecurityException ex = assertThrows(
+                SecurityException.class,
+                () -> projectService.createProject(inputProject, owner)
+        );
+        assertEquals("Free plan project limit (3 projects) reached. Please upgrade to create more projects.", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("createProject succeeds for paid subscription even when project count >= 3")
+    void createProject_Succeeds_WhenPaidPlanExceedsFreeLimit() {
+        Subscription monthlySub = new Subscription();
+        monthlySub.setPlanType(PlanType.MONTHLY);
+        when(subscriptionService.getSubscriptionByUserId(owner.getUserId())).thenReturn(monthlySub);
+
+        Project inputProject = new Project();
+        inputProject.setProjectName("Fourth Project");
+
+        when(projectRepository.save(any(Project.class))).thenAnswer(invocation -> {
+            Project saved = invocation.getArgument(0);
+            saved.setProjectId(44L);
+            return saved;
+        });
+
+        Project result = projectService.createProject(inputProject, owner);
+        assertNotNull(result);
+        assertEquals(44L, result.getProjectId());
     }
 }

@@ -184,3 +184,32 @@ The following RBAC and endpoint security improvements have been applied:
 - **Tests**:
   - Updated `RepositoryIntegrationTest` to assert initialization of `projectOwner` and `chat`. All 67 backend test cases pass cleanly.
 
+## Phase 3: Missing UI Integrations & Assignment Workflows (Completed)
+
+- **Activity Feed Integration**:
+  - Implemented `ActivityFeed.jsx` component displaying paginated project audit log events (`GET /api/projects/{id}/activity`) with action icons, actor avatar, relative timestamps, and human-readable event summaries.
+  - Added "Activity" tab to `ProjectDetails.jsx` with real-time cache invalidation upon project invitations or issue reassignments.
+- **Issue Assignment Workflow & Membership Validation**:
+  - Enhanced `IssueService.addUserToIssue` to strictly validate that the target assignee is a valid member or owner of the issue's project, preventing arbitrary user assignments across projects.
+  - Implemented `IssueService.removeUserFromIssue` and `DELETE /api/issues/{issueId}/assignee` endpoint with audit logging for unassigning issues.
+  - Updated `IssueList.jsx` and `IssueDetailsDialog.jsx` with an owner-gated assignee dropdown populated with project members, allowing project owners to assign or unassign issues seamlessly.
+- **Tests**:
+  - Added unit test cases for assignee project membership validation and issue unassignment audit logging in `IssueServiceAuditTest`.
+
+## Phase 4: Domain Enforcement & Observability (Completed)
+
+- **Domain Quota Enforcement**:
+  - Injected `SubscriptionService` into `ProjectService`.
+  - Enforced a 3-project creation limit on `PlanType.FREE` subscriptions in `ProjectService.createProject()`. When a free-tier user attempts to create a 4th project, a 403 `SecurityException` is thrown advising them to upgrade.
+  - Added `countByProjectOwner(User projectOwner)` to `ProjectRepository` for lightweight quota verification.
+  - Added unit tests in `ProjectServiceUnitTest` asserting quota enforcement for free plans and exemption for paid tiers.
+- **Observability & Health Checks**:
+  - Added `spring-boot-starter-actuator` to `backend/pom.xml`.
+  - Configured Actuator endpoints in `application.properties`: `health`, `info`, and `metrics` enabled with health probes.
+  - Permitted `/actuator/health` and `/actuator/info` in `AppConfig.java` security filter chain.
+- **Continuous Integration Pipeline Hardening**:
+  - Updated `.github/workflows/ci.yml` frontend job to run `npm test` alongside `npm run lint` and `npm run build`.
+- **Query Cache & Chat Fixes**:
+  - Normalized TanStack Query v5 object syntax in `ProjectChat.jsx` (`queryKey` parameter object).
+
+

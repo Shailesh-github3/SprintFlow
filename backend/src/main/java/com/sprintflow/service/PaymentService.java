@@ -9,6 +9,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +38,7 @@ public class PaymentService {
         this(userService, subscriptionService, apiKey, apiSecret, "http://localhost:5173");
     }
 
+    @Autowired
     public PaymentService(UserService userService,
                           SubscriptionService subscriptionService,
                           @Value("${razorpay.keyId}") String apiKey,

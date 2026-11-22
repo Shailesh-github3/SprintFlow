@@ -23,6 +23,9 @@ class ProjectServiceAuthorizationTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private SubscriptionService subscriptionService;
+
     @InjectMocks
     private ProjectService projectService;
 

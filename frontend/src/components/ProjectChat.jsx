@@ -32,7 +32,7 @@ const ProjectChat = ({ projectId }) => {
   const sendMutation = useMutation({
     mutationFn: (content) => api.post('/api/messages/send', { projectId: Number(projectId), content }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['chat', projectId]);
+      queryClient.invalidateQueries({ queryKey: ['chat', projectId] });
       setNewMessage('');
     },
     onError: (error) => {

@@ -15,6 +15,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     List<Project> findByProjectNameContaining(String projectName);
     List<Project> findByProjectOwner(User projectOwner);
+    long countByProjectOwner(User projectOwner);
     Page<Project> findByProjectNameContainingAndProjectMembersContaining(String name, User teamMember, Pageable pageable);
 
     @Query("SELECT DISTINCT p FROM Project p LEFT JOIN p.projectMembers m WHERE m = :user OR p.projectOwner = :user")

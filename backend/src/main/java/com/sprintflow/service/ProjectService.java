@@ -6,7 +6,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sprintflow.entity.Chat;
+import com.sprintflow.entity.PlanType;
 import com.sprintflow.entity.Project;
+import com.sprintflow.entity.Subscription;
 import com.sprintflow.entity.User;
 import com.sprintflow.exception.ResourceNotFoundException;
 import com.sprintflow.repository.ProjectRepository;
@@ -14,16 +16,34 @@ import com.sprintflow.repository.ProjectRepository;
 @Service
 public class ProjectService {
 
+    public static final int FREE_PLAN_PROJECT_LIMIT = 3;
+
     private final ProjectRepository projectRepository;
     private final UserService userService;
+    private final SubscriptionService subscriptionService;
 
-    public ProjectService(ProjectRepository projectRepository, UserService userService) {
+    public ProjectService(ProjectRepository projectRepository, UserService userService, SubscriptionService subscriptionService) {
         this.projectRepository = projectRepository;
         this.userService = userService;
+        this.subscriptionService = subscriptionService;
     }
 
     @Transactional
     public Project createProject(Project project, User projectOwner) {
+        if (projectOwner != null && projectOwner.getUserId() != null && subscriptionService != null) {
+            try {
+                Subscription subscription = subscriptionService.getSubscriptionByUserId(projectOwner.getUserId());
+                if (subscription != null && subscription.getPlanType() == PlanType.FREE) {
+                    long count = projectRepository.countByProjectOwner(projectOwner);
+                    if (count >= FREE_PLAN_PROJECT_LIMIT) {
+                        throw new SecurityException("Free plan project limit (" + FREE_PLAN_PROJECT_LIMIT + " projects) reached. Please upgrade to create more projects.");
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Allow creation if subscription record is absent (e.g. legacy/testing)
+            }
+        }
+
         Project newProject = new Project();
         newProject.setProjectName(project.getProjectName());
         newProject.setProjectOwner(projectOwner);
