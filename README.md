@@ -19,7 +19,7 @@ Layered monolith architecture: `controller → service → repository → entity
 
 ---
 
-## Features (Honest Status)
+## Features 
 
 | Feature | Status | Implementation Details |
 |---|---|---|
