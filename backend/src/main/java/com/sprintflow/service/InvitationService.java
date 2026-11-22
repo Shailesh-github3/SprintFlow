@@ -3,7 +3,7 @@ package com.sprintflow.service;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,7 +12,9 @@ import org.springframework.beans.factory.annotation.Value;
 import com.sprintflow.entity.AuditAction;
 import com.sprintflow.entity.AuditEntityType;
 import com.sprintflow.entity.Invitation;
+import com.sprintflow.entity.User;
 import com.sprintflow.repository.InvitationRepository;
+import com.sprintflow.repository.UserRepository;
 
 @Service
 public class InvitationService {
@@ -22,13 +24,28 @@ public class InvitationService {
     private final ProjectService projectService;
     private final AuditService auditService;
     private final String frontendUrl;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
-    public InvitationService(InvitationRepository invitationRepository, EmailService emailService, @Lazy ProjectService projectService, AuditService auditService, @Value("${sprintflow.frontend.url}") String frontendUrl) {
+    public InvitationService(InvitationRepository invitationRepository, EmailService emailService,
+                             @Lazy ProjectService projectService, AuditService auditService,
+                             @Value("${sprintflow.frontend.url}") String frontendUrl) {
+        this(invitationRepository, emailService, projectService, auditService, frontendUrl, null, null);
+    }
+
+    @Autowired
+    public InvitationService(InvitationRepository invitationRepository, EmailService emailService,
+                             @Lazy ProjectService projectService, AuditService auditService,
+                             @Value("${sprintflow.frontend.url}") String frontendUrl,
+                             @Autowired(required = false) UserRepository userRepository,
+                             @Autowired(required = false) NotificationService notificationService) {
         this.invitationRepository = invitationRepository;
         this.emailService = emailService;
         this.projectService = projectService;
         this.auditService = auditService;
         this.frontendUrl = frontendUrl;
+        this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -53,6 +70,18 @@ public class InvitationService {
 
         String invitationLink = frontendUrl + "/invite/accept?token=" + invitationToken;
         emailService.sendEmailWithToken(userEmail, invitationLink);
+
+        if (notificationService != null && userRepository != null) {
+            User user = userRepository.findByEmail(userEmail);
+            if (user != null) {
+                notificationService.createNotification(
+                        user,
+                        "Project Invitation",
+                        "You were invited by " + invitedByEmail + " to join project #" + projectId,
+                        "/invite/accept?token=" + invitationToken
+                );
+            }
+        }
     }
 
     @Transactional
@@ -84,7 +113,7 @@ public class InvitationService {
         if (invitation == null) {
             throw new IllegalArgumentException("Invalid invitation token");
         }
-        if (!invitation.getUserEmail().equals(currentUserEmail)) {
+        if (!invitation.getUserEmail().equalsIgnoreCase(currentUserEmail)) {
             throw new SecurityException("This invitation was not sent to you");
         }
         if (invitation.isUsed()) {
@@ -100,5 +129,17 @@ public class InvitationService {
         auditService.log(currentUserEmail, invitation.getProjectId(), AuditEntityType.PROJECT_MEMBER,
                 currentUserId, AuditAction.JOINED, null, null);
         return invitation;
+    }
+
+    @Transactional
+    public void rejectInvitationForUser(String token, String currentUserEmail) {
+        Invitation invitation = invitationRepository.findByToken(token);
+        if (invitation == null) {
+            throw new IllegalArgumentException("Invalid invitation token");
+        }
+        if (!invitation.getUserEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new SecurityException("This invitation was not sent to you");
+        }
+        invitationRepository.delete(invitation);
     }
 }

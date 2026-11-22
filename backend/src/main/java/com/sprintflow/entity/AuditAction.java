@@ -2,13 +2,17 @@ package com.sprintflow.entity;
 
 /**
  * What happened. Meaning depends on the entity type:
- * ISSUE -> CREATED / ASSIGNED / STATUS_CHANGED,
- * PROJECT_MEMBER -> INVITED / JOINED.
+ * ISSUE -> CREATED / UPDATED / DELETED / ASSIGNED / STATUS_CHANGED,
+ * PROJECT_MEMBER -> INVITED / JOINED / REMOVED / LEFT.
  */
 public enum AuditAction {
     CREATED,
+    UPDATED,
+    DELETED,
     ASSIGNED,
     STATUS_CHANGED,
     INVITED,
-    JOINED
+    JOINED,
+    REMOVED,
+    LEFT
 }

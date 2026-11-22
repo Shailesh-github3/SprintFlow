@@ -11,16 +11,18 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sprintflow.dto.IssueDTO;
 import com.sprintflow.entity.Issue;
 import com.sprintflow.request.IssueRequest;
+import com.sprintflow.request.UpdateIssueRequest;
 import com.sprintflow.service.IssueService;
 import com.sprintflow.service.ProjectService;
-import org.springframework.web.bind.annotation.PutMapping;
 import com.sprintflow.mapper.IssueMapper;
 import jakarta.validation.Valid;
 
@@ -58,12 +60,26 @@ public class IssueController {
 
     @GetMapping("/project/{projectId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getIssuesByProjectId(@PathVariable Long projectId,
-                                                   @PageableDefault(size = 20, sort = "issueId", direction = Sort.Direction.DESC) Pageable pageable) throws Exception {
+    public ResponseEntity<?> getIssuesByProjectId(
+            @PathVariable Long projectId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) Long assigneeId,
+            @RequestParam(required = false) String search,
+            @PageableDefault(size = 20, sort = "issueId", direction = Sort.Direction.DESC) Pageable pageable) throws Exception {
         String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
         projectService.ensureProjectMemberOrOwner(projectId, currentUserEmail);
-        Page<Issue> issuePage = issueService.getIssuesByProjectId(projectId, pageable);
+        Page<Issue> issuePage = issueService.getIssuesByProjectId(projectId, status, priority, assigneeId, search, pageable);
         return ResponseEntity.ok(issuePage.map(issueMapper::toDto));
+    }
+
+    @PutMapping("/{issueId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> updateIssue(@PathVariable Long issueId,
+                                         @Valid @RequestBody UpdateIssueRequest updateRequest) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        Issue updated = issueService.updateIssue(issueId, updateRequest, currentUserEmail);
+        return ResponseEntity.ok(issueMapper.toDto(updated));
     }
 
     @DeleteMapping("/{issueId}")

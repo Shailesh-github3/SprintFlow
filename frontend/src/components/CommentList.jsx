@@ -10,7 +10,7 @@ import { Skeleton } from './ui/skeleton';
 import { useAuth } from '../contexts/AuthContext';
 import ConfirmDialog from './ConfirmDialog';
 
-const CommentList = ({ issueId }) => {
+const CommentList = ({ issueId, isProjectOwner }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [newComment, setNewComment] = useState('');
@@ -34,7 +34,7 @@ const CommentList = ({ issueId }) => {
         content: commentText,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['comments', issueId]);
+      queryClient.invalidateQueries({ queryKey: ['comments', issueId] });
       setNewComment('');
       toast.success('Comment added');
     },
@@ -47,7 +47,7 @@ const CommentList = ({ issueId }) => {
   const deleteMutation = useMutation({
     mutationFn: (commentId) => api.delete(`/api/comments/${commentId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries(['comments', issueId]);
+      queryClient.invalidateQueries({ queryKey: ['comments', issueId] });
       toast.success('Comment deleted');
     },
     onError: (error) => {
@@ -76,7 +76,7 @@ const CommentList = ({ issueId }) => {
       {/* Comment Form */}
       <form onSubmit={handleAddComment} className="flex flex-col gap-2">
         <Textarea 
-          placeholder="Add a comment..."
+          placeholder="Add a comment... (Tip: @mention team members with their email)"
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           className="min-h-[80px] resize-none text-sm"
@@ -104,33 +104,40 @@ const CommentList = ({ issueId }) => {
         ) : comments?.length === 0 ? (
           <p className="text-sm text-muted-foreground italic">No comments yet.</p>
         ) : (
-          comments?.map((comment) => (
-            <div key={comment.commentId} className="flex gap-3 text-sm border-b pb-4 last:border-0">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>{comment.createdBy?.fullName?.charAt(0) || 'U'}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">{comment.createdBy?.fullName}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      {new Date(comment.createdAt).toLocaleString()}
-                    </span>
+          comments?.map((comment) => {
+            const isAuthor = comment.createdBy?.email === user?.email;
+            const canDelete = isAuthor || isProjectOwner;
+
+            return (
+              <div key={comment.commentId} className="flex gap-3 text-sm border-b pb-4 last:border-0">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>{comment.createdBy?.fullName?.charAt(0) || 'U'}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium">{comment.createdBy?.fullName}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {new Date(comment.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    {canDelete && (
+                      <Button 
+                        size="icon" 
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        title={isAuthor ? 'Delete your comment' : 'Delete as project owner'}
+                        onClick={() => handleDelete(comment.commentId)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
-                  {comment.createdBy?.email === user?.email && (
-                    <Button 
-                      size="icon" 
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(comment.commentId)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
+                  <p className="text-foreground whitespace-pre-wrap">{comment.commentText}</p>
                 </div>
-                <p className="text-foreground whitespace-pre-wrap">{comment.commentText}</p>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

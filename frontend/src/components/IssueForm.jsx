@@ -8,12 +8,20 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 
+const todayMidnight = new Date();
+todayMidnight.setHours(0, 0, 0, 0);
+
 const issueSchema = z.object({
   title: z.string().min(3, { message: 'Title must be at least 3 characters' }),
   description: z.string().min(5, { message: 'Description must be at least 5 characters' }),
   status: z.enum(['TODO', 'IN_PROGRESS', 'DONE'], { message: 'Status must be TODO, IN_PROGRESS, or DONE' }),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH'], { message: 'Priority must be LOW, MEDIUM, or HIGH' }),
-  dueDate: z.string().min(1, { message: 'Due date is required' }),
+  dueDate: z
+    .string()
+    .min(1, { message: 'Due date is required' })
+    .refine((val) => new Date(val + 'T00:00:00') >= todayMidnight, {
+      message: 'Due date cannot be in the past',
+    }),
 });
 
 const IssueForm = ({ open, setOpen, onSubmit, isLoading }) => {
@@ -44,6 +52,8 @@ const IssueForm = ({ open, setOpen, onSubmit, isLoading }) => {
       });
     }
   }, [open, reset]);
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -107,7 +117,7 @@ const IssueForm = ({ open, setOpen, onSubmit, isLoading }) => {
 
           <div className="space-y-2">
             <Label htmlFor="dueDate">Due Date</Label>
-            <Input id="dueDate" type="date" {...register('dueDate')} disabled={isLoading} />
+            <Input id="dueDate" type="date" min={todayStr} {...register('dueDate')} disabled={isLoading} />
             {errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate.message}</p>}
           </div>
 

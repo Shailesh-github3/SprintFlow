@@ -5,6 +5,7 @@ import { LogOut, Home, Briefcase, Settings, CreditCard, Menu } from 'lucide-reac
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import NotificationBell from '../components/NotificationBell';
 
 const MainLayout = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -88,6 +89,7 @@ const MainLayout = () => {
           <div className="w-full flex-1">
             <span className="text-sm font-semibold md:hidden">SprintFlow</span>
           </div>
+          <NotificationBell />
         </header>
         <div className="flex-1 overflow-y-auto p-6">
           <Outlet />

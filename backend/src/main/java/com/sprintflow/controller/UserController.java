@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.sprintflow.dto.DashboardStatsDTO;
 import com.sprintflow.dto.UserDTO;
 import com.sprintflow.entity.User;
 import com.sprintflow.exception.ResourceNotFoundException;
@@ -34,5 +35,17 @@ public class UserController {
             throw new ResourceNotFoundException("Current user not found");
         }
         return ResponseEntity.ok(userMapper.toDto(user));
+    }
+
+    @GetMapping("/dashboard-stats")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<DashboardStatsDTO> getDashboardStats() {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userService.getUserByEmail(currentUserEmail);
+        if (user == null) {
+            throw new ResourceNotFoundException("Current user not found");
+        }
+        DashboardStatsDTO stats = userService.getDashboardStats(user);
+        return ResponseEntity.ok(stats);
     }
 }

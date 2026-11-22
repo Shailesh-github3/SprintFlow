@@ -83,6 +83,12 @@ public class AuditService {
         if (entityType == AuditEntityType.ISSUE && action == AuditAction.CREATED) {
             return actorName + " created issue #" + entityId;
         }
+        if (entityType == AuditEntityType.ISSUE && action == AuditAction.UPDATED) {
+            return actorName + " updated issue #" + entityId;
+        }
+        if (entityType == AuditEntityType.ISSUE && action == AuditAction.DELETED) {
+            return actorName + " deleted issue #" + entityId + (oldValue != null ? " (" + oldValue + ")" : "");
+        }
         if (entityType == AuditEntityType.ISSUE && action == AuditAction.ASSIGNED) {
             return actorName + " assigned issue #" + entityId + " to " + newValue;
         }
@@ -94,6 +100,12 @@ public class AuditService {
         }
         if (entityType == AuditEntityType.PROJECT_MEMBER && action == AuditAction.JOINED) {
             return actorName + " joined project";
+        }
+        if (entityType == AuditEntityType.PROJECT_MEMBER && action == AuditAction.REMOVED) {
+            return actorName + " removed member " + (oldValue != null ? oldValue : "#" + entityId);
+        }
+        if (entityType == AuditEntityType.PROJECT_MEMBER && action == AuditAction.LEFT) {
+            return actorName + " left the project";
         }
         return actorName + " performed " + action + " on " + entityType + " #" + entityId;
     }

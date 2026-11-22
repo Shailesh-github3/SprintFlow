@@ -1,6 +1,7 @@
 package com.sprintflow.controller;
 
 import com.sprintflow.dto.ProjectDTO;
+import com.sprintflow.dto.ProjectStatsDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,7 +35,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 
-
 @RestController
 @RequestMapping("/api/projects")
 public class ProjectController {
@@ -46,7 +46,8 @@ public class ProjectController {
     private final ProjectMapper projectMapper;
     private final ChatMapper chatMapper;
 
-    public ProjectController(ProjectService projectService, UserService userService, InvitationService invitationService, AuditService auditService, ProjectMapper projectMapper, ChatMapper chatMapper) {
+    public ProjectController(ProjectService projectService, UserService userService, InvitationService invitationService,
+                             AuditService auditService, ProjectMapper projectMapper, ChatMapper chatMapper) {
         this.projectService = projectService;
         this.userService = userService;
         this.invitationService = invitationService;
@@ -92,7 +93,6 @@ public class ProjectController {
         return ResponseEntity.ok(projectPage.map(projectMapper::toDto));
     }
 
-
     @PutMapping("/{projectId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> updateProject(@PathVariable Long projectId, @Valid @RequestBody ProjectRequest request) throws Exception {
@@ -107,8 +107,6 @@ public class ProjectController {
         return ResponseEntity.ok(projectMapper.toDto(project));
     }
 
-    
-    
     @DeleteMapping("/{projectId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> deleteProject(@PathVariable Long projectId) throws Exception {
@@ -116,6 +114,30 @@ public class ProjectController {
         projectService.ensureProjectOwner(projectId, currentUserEmail);
         projectService.deleteProject(projectId);
         return ResponseEntity.ok(new MessageResponse("Project deleted successfully."));
+    }
+
+    @DeleteMapping("/{projectId}/members/{userId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> removeMember(@PathVariable Long projectId, @PathVariable Long userId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.removeMember(projectId, userId, currentUserEmail);
+        return ResponseEntity.ok(new MessageResponse("Member removed successfully."));
+    }
+
+    @PostMapping("/{projectId}/leave")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> leaveProject(@PathVariable Long projectId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        projectService.leaveProject(projectId, currentUserEmail);
+        return ResponseEntity.ok(new MessageResponse("You have left the project."));
+    }
+
+    @GetMapping("/{projectId}/stats")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ProjectStatsDTO> getProjectStats(@PathVariable Long projectId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        ProjectStatsDTO stats = projectService.getProjectStats(projectId, currentUserEmail);
+        return ResponseEntity.ok(stats);
     }
 
     @GetMapping("/search")
@@ -149,7 +171,6 @@ public class ProjectController {
         return ResponseEntity.ok(new MessageResponse("Invitation sent successfully."));
     }
 
-
     @GetMapping("/invite")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<MessageResponse> acceptInvitation(@RequestParam String token) throws Exception {
@@ -157,6 +178,14 @@ public class ProjectController {
         User currentUser = userService.findByEmail(currentUserEmail);
         invitationService.acceptInvitationForUser(token, currentUserEmail, currentUser.getUserId());
         return ResponseEntity.ok(new MessageResponse("Invitation accepted successfully."));
+    }
+
+    @PostMapping("/invite/reject")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MessageResponse> rejectInvitation(@RequestParam String token) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        invitationService.rejectInvitationForUser(token, currentUserEmail);
+        return ResponseEntity.ok(new MessageResponse("Invitation declined successfully."));
     }
 
     @GetMapping("/{projectId}/activity")
@@ -168,6 +197,5 @@ public class ProjectController {
         Page<AuditLog> activityPage = auditService.getActivityForProject(projectId, pageable);
         return ResponseEntity.ok(activityPage.map(auditService::toDto));
     }
-     
 
 }

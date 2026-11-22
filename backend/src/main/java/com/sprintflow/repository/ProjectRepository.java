@@ -25,4 +25,6 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
     @Query("SELECT DISTINCT p FROM Project p LEFT JOIN p.projectMembers m WHERE (m = :user OR p.projectOwner = :user) AND (:category IS NULL OR LOWER(p.category) = LOWER(:category)) AND (:tag IS NULL OR :tag MEMBER OF p.tags)")
     Page<Project> findProjectsForMemberWithFilters(@Param("user") User user, @Param("category") String category, @Param("tag") String tag, Pageable pageable);
 
+    @Query("SELECT COUNT(DISTINCT p) FROM Project p LEFT JOIN p.projectMembers m WHERE m = :user OR p.projectOwner = :user")
+    long countProjectsForUser(@Param("user") User user);
 }
