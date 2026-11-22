@@ -551,15 +551,17 @@ sequenceDiagram
     participant JwtProv as JwtProvider
 
     User->>React: Enter credentials and submit
-    React->>AuthCtrl: POST /api/auth/login {email, password}
+    React->>AuthCtrl: POST /api/auth/login (email, password)
     AuthCtrl->>UserRepo: findByEmail(email)
-    UserRepo-->>AuthCtrl: User entity (with BCrypt hash)
+    UserRepo-->>AuthCtrl: User entity with BCrypt hash
     AuthCtrl->>PasswordEnc: matches(rawPassword, hashedPassword)
     PasswordEnc-->>AuthCtrl: Match confirmed (true)
     AuthCtrl->>JwtProv: generateToken(Authentication)
     JwtProv-->>AuthCtrl: Signed JWT token string
-    AuthCtrl-->>React: 200 OK + Set-Cookie: sprintflow_jwt=...; HttpOnly; SameSite=Lax
-    React->>React: Set isAuthenticated = true & navigate to Dashboard
+    AuthCtrl-->>React: 200 OK + Set-Cookie header
+    Note over React,AuthCtrl: Cookie: sprintflow_jwt=...<br/>HttpOnly; SameSite=Lax
+    React->>React: Set isAuthenticated = true
+    React->>React: Navigate to Dashboard
 ```
 
 ### 2. Project Creation & Plan Quota Enforcement
