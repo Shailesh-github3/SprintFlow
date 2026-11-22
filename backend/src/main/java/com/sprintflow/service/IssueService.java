@@ -98,10 +98,32 @@ public class IssueService {
     public Issue addUserToIssue(Long issueId, Long userId, String actorEmail) throws Exception {
         Issue issue = getIssueById(issueId);
         projectService.ensureProjectOwner(issue.getProject().getProjectId(), actorEmail);
+        User user = userService.getUserByUserId(userId);
+
+        Project project = issue.getProject();
+        boolean isOwner = project.getProjectOwner() != null && project.getProjectOwner().getUserId().equals(userId);
+        boolean isMember = project.getProjectMembers() != null && project.getProjectMembers().stream().anyMatch(m -> m.getUserId().equals(userId));
+        if (!isOwner && !isMember) {
+            throw new IllegalArgumentException("User is not a member of this project");
+        }
+
         String oldAssignee = issue.getAssignedUser() != null ? issue.getAssignedUser().getFullName() : "Unassigned";
-        Issue updated = addUserToIssue(issueId, userId);
+        issue.setAssignedUser(user);
+        Issue updated = issueRepository.save(issue);
         auditService.log(actorEmail, issue.getProject().getProjectId(), AuditEntityType.ISSUE,
                 issueId, AuditAction.ASSIGNED, oldAssignee, updated.getAssignedUser().getFullName());
+        return updated;
+    }
+
+    @Transactional
+    public Issue removeUserFromIssue(Long issueId, String actorEmail) throws Exception {
+        Issue issue = getIssueById(issueId);
+        projectService.ensureProjectOwner(issue.getProject().getProjectId(), actorEmail);
+        String oldAssignee = issue.getAssignedUser() != null ? issue.getAssignedUser().getFullName() : "Unassigned";
+        issue.setAssignedUser(null);
+        Issue updated = issueRepository.save(issue);
+        auditService.log(actorEmail, issue.getProject().getProjectId(), AuditEntityType.ISSUE,
+                issueId, AuditAction.ASSIGNED, oldAssignee, "Unassigned");
         return updated;
     }
 

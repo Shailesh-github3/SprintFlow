@@ -15,7 +15,7 @@ import Pagination from './Pagination';
 
 const PAGE_SIZE = 12;
 
-const IssueList = ({ projectId }) => {
+const IssueList = ({ projectId, project }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -191,10 +191,13 @@ const IssueList = ({ projectId }) => {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {issue.assignedUser && (
-                  <div className="text-xs font-medium bg-accent px-2 py-1 rounded-md">
-                    {issue.assignedUser.fullName}
+                {issue.assignedUser ? (
+                  <div className="text-xs font-medium bg-accent px-2 py-1 rounded-md flex items-center gap-1.5" title={`Assigned to ${issue.assignedUser.fullName}`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>
+                    <span className="truncate max-w-[120px]">{issue.assignedUser.fullName}</span>
                   </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">Unassigned</span>
                 )}
               </CardFooter>
             </Card>
@@ -215,6 +218,7 @@ const IssueList = ({ projectId }) => {
         issueId={selectedIssueId} 
         open={!!selectedIssueId} 
         setOpen={(open) => !open && setSelectedIssueId(null)} 
+        project={project}
       />
 
       <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />

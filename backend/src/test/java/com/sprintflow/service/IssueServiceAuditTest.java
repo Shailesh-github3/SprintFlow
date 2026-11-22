@@ -1,5 +1,6 @@
 package com.sprintflow.service;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -124,10 +125,36 @@ class IssueServiceAuditTest {
         return issue;
     }
 
+    @Test
+    @DisplayName("assigning a user who is not a project member throws IllegalArgumentException")
+    void addUserToIssue_userNotProjectMember_throwsException() throws Exception {
+        Issue issue = issue(42L, "TODO", null);
+        when(issueRepository.findById(42L)).thenReturn(Optional.of(issue));
+        when(userService.getUserByUserId(999L)).thenReturn(user(999L, "Stranger"));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                issueService.addUserToIssue(42L, 999L, "john@example.com"));
+    }
+
+    @Test
+    @DisplayName("removing assignee records unassigned in audit log")
+    void removeUserFromIssue_recordsUnassigned() throws Exception {
+        Issue issue = issue(42L, "TODO", user(7L, "Bob"));
+        when(issueRepository.findById(42L)).thenReturn(Optional.of(issue));
+        when(issueRepository.save(any(Issue.class))).thenAnswer(i -> i.getArgument(0));
+
+        issueService.removeUserFromIssue(42L, "john@example.com");
+
+        verify(auditService).log("john@example.com", 9L, AuditEntityType.ISSUE, 42L,
+                AuditAction.ASSIGNED, "Bob", "Unassigned");
+    }
+
     private Project project(Long id) {
         Project project = new Project();
         project.setProjectId(id);
         project.setProjectName("P");
+        project.setProjectOwner(user(99L, "Owner"));
+        project.setProjectMembers(new java.util.ArrayList<>(java.util.List.of(user(1L, "Alice"), user(7L, "Bob"))));
         return project;
     }
 

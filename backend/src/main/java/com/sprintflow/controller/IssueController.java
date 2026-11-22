@@ -82,6 +82,14 @@ public class IssueController {
         return ResponseEntity.ok().build();
     }
 
+    @DeleteMapping("/{issueId}/assignee")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> removeUserFromIssue(@PathVariable Long issueId) throws Exception {
+        String currentUserEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+        issueService.removeUserFromIssue(issueId, currentUserEmail);
+        return ResponseEntity.ok().build();
+    }
+
     @PutMapping("/{issueId}/status/{status}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> updateIssueStatus(@PathVariable String status, @PathVariable Long issueId) throws Exception {

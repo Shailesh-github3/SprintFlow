@@ -16,6 +16,7 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import IssueList from '../components/IssueList';
 import ProjectChat from '../components/ProjectChat';
+import ActivityFeed from '../components/ActivityFeed';
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -38,6 +39,8 @@ const ProjectDetails = () => {
   const inviteMutation = useMutation({
     mutationFn: (email) => api.post('/api/projects/invite', { projectId: Number(projectId), userEmail: email }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['activity', projectId] });
       setIsInviteOpen(false);
       setInviteEmail('');
       toast.success('Invitation sent successfully');
@@ -191,19 +194,23 @@ const ProjectDetails = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Tabs for Issues and Chat */}
+      {/* Tabs for Issues, Chat, and Activity Feed */}
       <Tabs defaultValue="issues" className="mt-8">
         <TabsList className="mb-4">
           <TabsTrigger value="issues">Issues</TabsTrigger>
           <TabsTrigger value="chat">Team Chat</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="issues">
-          <IssueList projectId={projectId} />
+          <IssueList projectId={projectId} project={project} />
         </TabsContent>
         <TabsContent value="chat">
           <div className="max-w-4xl mx-auto">
             <ProjectChat projectId={projectId} />
           </div>
+        </TabsContent>
+        <TabsContent value="activity">
+          <ActivityFeed projectId={projectId} />
         </TabsContent>
       </Tabs>
     </div>
