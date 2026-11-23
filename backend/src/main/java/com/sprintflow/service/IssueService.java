@@ -59,9 +59,11 @@ public class IssueService {
 
     @Transactional
     public Issue createIssue(IssueRequest issue, String actorEmail) throws Exception {
-        projectService.ensureProjectMemberOrOwner(issue.getProjectId(), actorEmail);
+        Project project = projectService.ensureProjectMemberOrOwner(issue.getProjectId(), actorEmail);
+        if (project == null) {
+            project = projectService.getProjectById(issue.getProjectId());
+        }
         User creator = userService.findByEmail(actorEmail);
-        Project project = projectService.getProjectById(issue.getProjectId());
 
         Issue newIssue = new Issue();
         newIssue.setIssueTitle(issue.getTitle());

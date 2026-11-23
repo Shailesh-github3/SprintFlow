@@ -98,16 +98,17 @@ public class ProjectService {
     }
 
     @Transactional(readOnly = true)
-    public void ensureProjectOwner(Long projectId, String userEmail) throws Exception {
+    public Project ensureProjectOwner(Long projectId, String userEmail) throws Exception {
         Project project = getProjectById(projectId);
         User actor = userService.findByEmail(userEmail);
         if (project.getProjectOwner() == null || !project.getProjectOwner().getUserId().equals(actor.getUserId())) {
             throw new SecurityException("User is not authorized for this project");
         }
+        return project;
     }
 
     @Transactional(readOnly = true)
-    public void ensureProjectMemberOrOwner(Long projectId, String userEmail) throws Exception {
+    public Project ensureProjectMemberOrOwner(Long projectId, String userEmail) throws Exception {
         Project project = getProjectById(projectId);
         User actor = userService.findByEmail(userEmail);
         boolean isOwner = project.getProjectOwner() != null && project.getProjectOwner().getUserId().equals(actor.getUserId());
@@ -115,6 +116,7 @@ public class ProjectService {
         if (!isOwner && !isMember) {
             throw new SecurityException("User is not authorized for this project");
         }
+        return project;
     }
 
     @Transactional
@@ -147,8 +149,10 @@ public class ProjectService {
 
     @Transactional
     public void removeMember(Long projectId, Long userId, String actorEmail) throws Exception {
-        ensureProjectOwner(projectId, actorEmail);
-        Project project = getProjectById(projectId);
+        Project project = ensureProjectOwner(projectId, actorEmail);
+        if (project == null) {
+            project = getProjectById(projectId);
+        }
         User memberToRemove = userService.getUserByUserId(userId);
 
         if (project.getProjectOwner() != null && project.getProjectOwner().getUserId().equals(memberToRemove.getUserId())) {

@@ -2,7 +2,6 @@ package com.sprintflow.controller;
 
 import java.time.LocalDateTime;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +17,7 @@ import com.sprintflow.entity.Subscription;
 import com.sprintflow.entity.User;
 import com.sprintflow.mapper.SubscriptionMapper;
 import com.sprintflow.request.PaymentVerificationRequest;
+import com.sprintflow.response.PaymentLinkResponse;
 import com.sprintflow.service.PaymentService;
 import com.sprintflow.service.UserService;
 
@@ -39,13 +39,11 @@ public class PaymentController {
 
     @PostMapping("/{planType}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> createPaymentLink(@PathVariable PlanType planType) {
-
+    public ResponseEntity<PaymentLinkResponse> createPaymentLink(@PathVariable PlanType planType) {
         String currentEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-        return paymentService.createPaymentLink(currentEmail, planType)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body("Error creating payment link"));
+        PaymentLinkResponse response = paymentService.createPaymentLink(currentEmail, planType)
+                .orElseThrow(() -> new IllegalStateException("Failed to create payment link with payment provider"));
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/verify")
